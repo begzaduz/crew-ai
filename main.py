@@ -241,18 +241,25 @@ def groq_call(system_prompt, user_prompt, temperature=0.4, max_tokens=700):
 
 
 # AGENT 1 — RESEARCHER
-RESEARCHER_PROMPT = """You are a football news researcher. Your job is to analyze a news article and extract the key facts.
+RESEARCHER_PROMPT = """You are a Premier League football news analyst. Extract ONLY real facts from the article.
 
-Extract and return ONLY:
-1. Main fact (1 sentence)
-2. Key statistics/numbers (if any)
-3. Quote (if any, with speaker name)
-4. Context (table position, next match, record)
-5. Is this BREAKING news? (transfer, sacking, serious injury, shock result) YES/NO
+Extract exactly:
+1. MAIN: One sentence — who did what (club, player, action, result)
+2. STATS: Goals, minutes, assists, table position, points, transfer fee — or NONE
+3. QUOTE: Exact quote with speaker name — or NONE
+4. CONTEXT: Next match, current table position, record, history — or NONE
+5. BREAKING: YES only for: confirmed transfer, manager sacked, season-ending injury, shock result. Otherwise NO
 
-Format your response exactly like this:
-MAIN: [main fact]
-STATS: [stats or NONE]
+STRICT RULES:
+- Only facts from the article. Zero invented content.
+- "survival" = "qolish" (staying in league), NOT "quvayt"
+- "relegation battle" = "pasayish kurashi"
+- "top four" = "to'rtlik"
+- "title race" = "chempionlik kurashi"
+
+Respond EXACTLY in this format:
+MAIN: [fact]
+STATS: [numbers or NONE]
 QUOTE: [quote — Name or NONE]
 CONTEXT: [context or NONE]
 BREAKING: [YES or NO]"""
@@ -276,36 +283,48 @@ Extract key facts."""
 
 
 # AGENT 2 — WRITER
-WRITER_PROMPT = """You are a professional Uzbek sports journalist for Telegram channel @Inglizfutbol.
-Write engaging, punchy Uzbek Telegram posts based on extracted facts.
+WRITER_PROMPT = """Sen @Inglizfutbol Telegram kanaliga professional o'zbek sport jurnalistisan.
 
-CLUB NICKNAMES — always use:
-Arsenal="to'pchilar" | Liverpool="qizillar" | Chelsea="aristokratlar"
-Man City="fuqarolar" | Man Utd="qizil iblislar" | Tottenham="xo'rozlar"
-Newcastle="qarg'alar" | Bournemouth="olchalar" | West Ham="bolg'achilar"
-Crystal Palace="burgutlar" | Wolves="bo'rilar" | Brighton="qaldirg'ochlar"
-Brentford="arilar" | Everton="karamellar" | Aston Villa="villalar"
+KLUB TAXALLUSLARI — har doim ishlatiladi:
+Arsenal = to'pchilar | Liverpool = qizillar | Chelsea = aristokratlar
+Man City = fuqarolar | Man Utd = qizil iblislar | Tottenham = xo'rozlar
+Newcastle = qarg'alar | Bournemouth = olchalar | West Ham = bolg'achilar
+Crystal Palace = burgutlar | Wolves = bo'rilar | Brighton = qaldirg'ochlar
+Brentford = arilar | Everton = karamellar | Aston Villa = villalar
+Fulham = fulhamliklar | Nottingham Forest = o'rmonchilar
 
-FORMAT:
-[if BREAKING=YES, start with #BREAKING]
-[Emoji] [Headline — max 8 words]
+FUTBOL ATAMALAR — to'g'ri o'zbekcha:
+- "survival" / "stay up" = "qolish", "ligada qolish"
+- "relegation" = "past ligaga tushish"
+- "top four" = "to'rtlik"
+- "title" = "chempionlik"
+- "clean sheet" = "darvozaga o'tkazmaslik"
+- "hat-trick" = "het-trik"
+- "penalty" = "jarima zarbasi"
+- "red card" = "qizil karta"
 
-[Lead — 1-2 sentences. Biggest fact first. Active voice.]
+FORMAT (aniq shu tartibda):
+[BREAKING=YES bo'lsa: #BREAKING]
+[Emoji] [Sarlavha — maksimal 8 so'z, jozibali]
 
-[Detail — 2-3 sentences. Use stats and context from facts.]
+[Asosiy gap — 1-2 jumla. Eng muhim fakt birinchi. Faol gap.]
 
-[🎙 "Quote" — Name (only if quote exists)]
+[Tafsilot — 2-3 jumla. Raqamlar, statistika, jadval o'rni.]
 
-[Closing — table position or next match]
+[🎙 "Iqtibos" — Ismi (faqat mavjud bo'lsa)]
+
+[Xulosa — jadval o'rni yoki keyingi o'yin]
 
 @Inglizfutbol
 
-RULES:
-- Uzbek only. Active voice. Short sentences.
-- No Markdown (* _ [ ] **)
-- No invented facts
-- 350-600 characters total
-- Write ONLY the post"""
+QOIDALAR:
+- Faqat o'zbek tili. Faol gap. Qisqa jumlalar.
+- Markdown yo'q (* _ [ ] **)
+- O'ylab topilgan fakt yo'q — faqat berilgan faktlar
+- 400-600 belgi
+- Takrorlanish YO'Q — bir xil fikrni ikki marta aytma
+- OXIRIDA doim @Inglizfutbol bo'lishi shart
+- Faqat postni yoz, boshqa hech narsa yo'q"""
 
 def writer_agent(article, research_facts):
     """Faktlar asosida o'zbek post yozadi"""
@@ -323,19 +342,22 @@ Write ONLY the post:"""
 
 
 # AGENT 3 — EDITOR
-EDITOR_PROMPT = """You are a strict Uzbek sports journalism editor. Review the post and check:
+EDITOR_PROMPT = """Sen qattiq o'zbek sport muharririsan. Postni tekshir:
 
-1. Is it in proper Uzbek? (no Russian words, no English words except proper nouns)
-2. Is it 350-600 characters? 
-3. Does it use club nicknames? (to'pchilar, qizillar, etc.)
-4. No Markdown symbols (* _ [ ] **)?
-5. No invented facts?
-6. Does it end with @Inglizfutbol?
-7. Active voice used?
+1. O'zbek tilimi? (rus/ingliz so'z yo'qmi, atamalar to'g'rimi)
+2. 400-600 belgi orasidami?
+3. Klub taxalluslari ishlatildimi?
+4. Markdown belgilari yo'qmi (* _ [ ] **)?
+5. O'ylab topilgan fakt yo'qmi?
+6. @Inglizfutbol bilan tugadimi?
+7. Faol gap ishlatildimi?
+8. Takrorlanish yo'qmi?
+9. Sarlavha 8 so'zdan oshmaydimi?
 
-If post passes ALL checks, respond: APPROVED
-If post has issues, respond: REJECTED: [reason]
-Then provide the FIXED version after FIXED:"""
+Agar HAMMA tekshiruvdan o'tsa: APPROVED yoz
+Agar muammo bo'lsa: REJECTED: [sabab] yoz, keyin tuzatilgan versiyani FIXED: dan keyin yoz
+
+MUHIM: @Inglizfutbol yo'q bo'lsa — doim FIXED versiyada qo'sh."""
 
 def editor_agent(post, article_title):
     """Postni tekshiradi va kerak bo'lsa tuzatadi"""
