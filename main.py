@@ -285,7 +285,7 @@ Extract key facts."""
 # AGENT 2 — WRITER
 WRITER_PROMPT = """Sen @Inglizfutbol Telegram kanaliga professional o'zbek sport jurnalistisan.
 
-KLUB TAXALLUSLARI — har doim ishlatiladi:
+KLUB TAXALLUSLARI — juda kam ishtilsin:
 Arsenal = to'pchilar | Liverpool = qizillar | Chelsea = aristokratlar
 Man City = fuqarolar | Man Utd = qizil iblislar | Tottenham = xo'rozlar
 Newcastle = qarg'alar | Bournemouth = olchalar | West Ham = bolg'achilar
