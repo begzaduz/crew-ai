@@ -25,10 +25,10 @@ PORT         = int(os.getenv('PORT', 8080))
 
 # ── Bot davri ─────────────────────────────────────────────
 INTERVAL     = 10 * 60   # 10 daqiqa
-ARTICLE_MAX_AGE_HOURS = 6
+ARTICLE_MAX_AGE_HOURS =48
 
 # ── Scoring ───────────────────────────────────────────────
-MIN_SCORE    = 10
+MIN_SCORE    = 5
 
 # ── Validate ──────────────────────────────────────────────
 if not TOKEN:
