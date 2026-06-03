@@ -28,7 +28,7 @@ INTERVAL     = 10 * 60   # 10 daqiqa
 ARTICLE_MAX_AGE_HOURS = 6
 
 # ── Scoring ───────────────────────────────────────────────
-MIN_SCORE    = 20
+MIN_SCORE    = 10
 
 # ── Validate ──────────────────────────────────────────────
 if not TOKEN:
