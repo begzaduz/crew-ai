@@ -9,9 +9,9 @@ from config import ARTICLE_MAX_AGE_HOURS, MIN_SCORE
 log = logging.getLogger(__name__)
 
 RSS_FEEDS = [
-    'https://feeds.bbci.co.uk/sport/football/premier-league/rss.xml',
+    'https://www.theguardian.com/football/premierleague/rss',
+    'https://feeds.bbci.co.uk/sport/football/rss.xml',
     'https://www.skysports.com/rss/12040',
-    'https://talksport.com/feed/',
 ]
 
 HIGH_KEYWORDS = [
