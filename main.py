@@ -8,7 +8,7 @@ import requests
 
 from config import TOKEN, CHANNEL, ADMIN_IDS, PORT, INTERVAL
 from database import is_processed, mark_processed, clear_cache, get_stats
-from feeds import fetch_news
+from feeds import fetch_news, fetch_og_image
 from agents import generate_post
 
 log = logging.getLogger(__name__)
@@ -26,7 +26,29 @@ def tg_send(chat_id: int | str, text: str, reply_markup: dict | None = None) -> 
     return res.json()
 
 
-def tg_channel(text: str) -> dict:
+def tg_channel(text: str, image_url: str | None = None) -> dict:
+    """Kanalga rasm bilan yoki rasmsiz yuboradi."""
+    if image_url:
+        # Avval sendPhoto bilan urinish
+        try:
+            res = requests.post(
+                f'https://api.telegram.org/bot{TOKEN}/sendPhoto',
+                json={
+                    'chat_id': CHANNEL,
+                    'photo': image_url,
+                    'caption': text,
+                    'parse_mode': 'Markdown',
+                },
+                timeout=15,
+            )
+            result = res.json()
+            if result.get('ok'):
+                return result
+            log.warning(f'[TG] sendPhoto xato: {result.get("description")} — rasmsiz yuborilmoqda')
+        except Exception as e:
+            log.warning(f'[TG] sendPhoto exception: {e} — rasmsiz yuborilmoqda')
+
+    # Rasmsiz yoki rasm xato bo'lsa — oddiy matn
     res = requests.post(
         f'https://api.telegram.org/bot{TOKEN}/sendMessage',
         json={
@@ -77,10 +99,16 @@ def auto_news_post() -> bool:
             mark_processed(article['url'], article['title'], article['score'])
             continue
 
-        result = tg_channel(post)
+        # Rasm URL — RSS dan topilmagan bo'lsa og:image dan olishga urinish
+        image_url = article.get('image_url')
+        if not image_url and article.get('url'):
+            log.info('[Auto] RSS da rasm yo\'q — og:image qidirilmoqda...')
+            image_url = fetch_og_image(article['url'])
+
+        result = tg_channel(post, image_url)
         if result.get('ok'):
             mark_processed(article['url'], article['title'], article['score'])
-            log.info(f'[Auto] ✅ Yuborildi: {article["title"][:60]}')
+            log.info(f'[Auto] ✅ Yuborildi (rasm: {"bor" if image_url else "yo\'q"}): {article["title"][:50]}')
             return True
         else:
             log.error(f'[Auto] TG xato: {result.get("description")}')
@@ -106,8 +134,9 @@ def handle_update(update: dict) -> None:
 
     if text == '/start':
         tg_send(chat_id,
-            'Ingliz Futboli Bot v4.0\n\n'
-            '3 agent: Researcher + Writer + Editor\n\n'
+            'Ingliz Futboli Bot v4.1\n\n'
+            '3 agent: Researcher + Writer + Editor\n'
+            'Rasm: maqola thumbnail avtomatik\n\n'
             'Matn yuboring — professional post\n'
             '/yangilik — RSS dan yangi xabar olish\n'
             '/stat — Statistika\n'
@@ -159,7 +188,7 @@ def handle_update(update: dict) -> None:
             return
         tg_send(chat_id, '⏳ 3 agent ishlayapti...')
         try:
-            article = {'title': text, 'description': '', 'url': None, 'score': 100}
+            article = {'title': text, 'description': '', 'url': None, 'score': 100, 'image_url': None}
             post = generate_post(article)
             pending[chat_id] = {'text': post}
             tg_send(chat_id, f'Ko\'rib chiqing:\n\n{post}')
@@ -190,7 +219,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b'Ingliz Futboli Bot v4.0')
+        self.wfile.write(b'Ingliz Futboli Bot v4.1')
 
     def log_message(self, *args):
         pass
