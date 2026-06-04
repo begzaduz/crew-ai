@@ -39,6 +39,25 @@ def score_article(title: str, desc: str) -> int:
     return score
 
 
+def fetch_og_image(url: str) -> str | None:
+    """Maqola sahifasidan og:image URL ni oladi."""
+    try:
+        res = requests.get(url, timeout=6, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        })
+        res.raise_for_status()
+        match = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']', res.text)
+        if not match:
+            match = re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']', res.text)
+        if match:
+            img_url = match.group(1)
+            if img_url.startswith('http'):
+                return img_url
+    except Exception as e:
+        log.warning(f'[OGImage] {url}: {e}')
+    return None
+
+
 def fetch_news() -> list[dict]:
     seen: set[str] = set()
     articles: list[dict] = []
@@ -63,12 +82,19 @@ def fetch_news() -> list[dict]:
                 score = score_article(title, desc)
 
                 if score >= MIN_SCORE:
+                    # RSS dan thumbnail olishga urinish
+                    image_url = None
+                    media = entry.get('media_thumbnail') or entry.get('media_content')
+                    if media and isinstance(media, list) and media[0].get('url'):
+                        image_url = media[0]['url']
+
                     seen.add(url)
                     articles.append({
                         'url': url,
                         'title': title,
                         'description': desc[:300],
                         'score': score,
+                        'image_url': image_url,
                     })
         except Exception as e:
             log.error(f'[RSS] {feed_url}: {e}')
@@ -79,8 +105,6 @@ def fetch_news() -> list[dict]:
 
 
 def fetch_article_text(url: str) -> str | None:
-    """Maqola matnini olish. Avval trafilatura, keyin oddiy requests."""
-    # Trafilatura — eng yaxshi parser
     try:
         import trafilatura
         downloaded = trafilatura.fetch_url(url)
@@ -89,11 +113,10 @@ def fetch_article_text(url: str) -> str | None:
             if text and len(text) > 100:
                 return text[:1500]
     except ImportError:
-        pass  # trafilatura o'rnatilmagan bo'lsa keyingiga o'tadi
+        pass
     except Exception as e:
         log.warning(f'[Trafilatura] {url}: {e}')
 
-    # Fallback — oddiy requests + markdownify
     try:
         from markdownify import markdownify
         res = requests.get(url, timeout=8, headers={
