@@ -13,7 +13,7 @@ from agents import generate_post
 
 log = logging.getLogger(__name__)
 
-# ── Telegram yordamchi ────────────────────────────────────
+
 def tg_send(chat_id: int | str, text: str, reply_markup: dict | None = None) -> dict:
     payload: dict = {'chat_id': chat_id, 'text': text}
     if reply_markup:
@@ -24,9 +24,9 @@ def tg_send(chat_id: int | str, text: str, reply_markup: dict | None = None) -> 
         timeout=15,
     )
     return res.json()
- 
+
+
 def tg_channel(text: str) -> dict:
-    """Kanalga Markdown formatida yuboradi."""
     res = requests.post(
         f'https://api.telegram.org/bot{TOKEN}/sendMessage',
         json={
@@ -37,7 +37,6 @@ def tg_channel(text: str) -> dict:
         timeout=15,
     )
     result = res.json()
-    # Markdown xato bersa, oddiy matn bilan qayta urinish
     if not result.get('ok') and 'parse' in result.get('description', '').lower():
         log.warning('[TG] Markdown xato — oddiy matn bilan qayta yuborilmoqda')
         res = requests.post(
@@ -49,7 +48,12 @@ def tg_channel(text: str) -> dict:
     return result
 
 
-# ── Auto yangilik yuborish ────────────────────────────────
+def is_admin(chat_id: int) -> bool:
+    if not ADMIN_IDS:
+        return True
+    return chat_id in ADMIN_IDS
+
+
 def auto_news_post() -> bool:
     log.info('[Auto] Yangilik qidirilmoqda...')
     articles = fetch_news()
@@ -85,11 +89,9 @@ def auto_news_post() -> bool:
     return False
 
 
-# ── Foydalanuvchi holati ──────────────────────────────────
-pending: dict[int, dict] = {}   # {chat_id: {'text': str}}
+pending: dict[int, dict] = {}
 
 
-# ── Update handler ────────────────────────────────────────
 def handle_update(update: dict) -> None:
     msg = update.get('message', {})
     if not msg:
@@ -98,12 +100,10 @@ def handle_update(update: dict) -> None:
     chat_id: int = msg['chat']['id']
     text: str = msg.get('text', '').strip()
 
-    # ── Admin bo'lmasa buyruqlar ishlamaydi ───────────────
     if text.startswith('/') and not is_admin(chat_id):
         tg_send(chat_id, '⛔ Siz admin emassiz.')
         return
 
-    # ── Buyruqlar ─────────────────────────────────────────
     if text == '/start':
         tg_send(chat_id,
             'Ingliz Futboli Bot v4.0\n\n'
@@ -144,7 +144,6 @@ def handle_update(update: dict) -> None:
         clear_cache()
         tg_send(chat_id, '✅ Kesh tozalandi! /yangilik yuboring.')
 
-    # ── Tasdiqlash tugmalari ──────────────────────────────
     elif text == 'Yuborish' and chat_id in pending:
         tg_channel(pending.pop(chat_id)['text'])
         tg_send(chat_id, '✅ Kanalga yuborildi!',
@@ -155,10 +154,9 @@ def handle_update(update: dict) -> None:
         tg_send(chat_id, '❌ Bekor qilindi.',
                 reply_markup={'remove_keyboard': True})
 
-    # ── Erkin matn → AI post ──────────────────────────────
     elif text and not text.startswith('/'):
         if not is_admin(chat_id):
-            return  # Begona foydalanuvchilardan matn qabul qilinmaydi
+            return
         tg_send(chat_id, '⏳ 3 agent ishlayapti...')
         try:
             article = {'title': text, 'description': '', 'url': None, 'score': 100}
@@ -176,7 +174,6 @@ def handle_update(update: dict) -> None:
             tg_send(chat_id, f'❌ Xatolik: {e}')
 
 
-# ── Webhook HTTP handler ──────────────────────────────────
 class WebhookHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get('Content-Length', 0))
@@ -196,12 +193,11 @@ class WebhookHandler(BaseHTTPRequestHandler):
         self.wfile.write(b'Ingliz Futboli Bot v4.0')
 
     def log_message(self, *args):
-        pass  # HTTP log chiqarilmaydi
+        pass
 
 
-# ── Background news loop ──────────────────────────────────
 def news_loop() -> None:
-    time.sleep(10)  # Server ishga tushguncha kutish
+    time.sleep(10)
     while True:
         try:
             auto_news_post()
@@ -210,7 +206,6 @@ def news_loop() -> None:
         time.sleep(INTERVAL)
 
 
-# ── Entry point ───────────────────────────────────────────
 if __name__ == '__main__':
     log.info(f'[Server] Port {PORT} da ishga tushdi | Admin IDlar: {ADMIN_IDS}')
     threading.Thread(target=news_loop, daemon=True).start()
