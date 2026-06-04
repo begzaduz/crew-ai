@@ -24,16 +24,29 @@ def tg_send(chat_id: int | str, text: str, reply_markup: dict | None = None) -> 
         timeout=15,
     )
     return res.json()
-
+ 
 def tg_channel(text: str) -> dict:
-    return tg_send(CHANNEL, text)
-
-
-# ── Admin tekshiruvi ──────────────────────────────────────
-def is_admin(chat_id: int) -> bool:
-    if not ADMIN_IDS:
-        return True  # ADMIN_IDS bo'sh bo'lsa hamma admin (xavfli, lekin ishlasin)
-    return chat_id in ADMIN_IDS
+    """Kanalga Markdown formatida yuboradi."""
+    res = requests.post(
+        f'https://api.telegram.org/bot{TOKEN}/sendMessage',
+        json={
+            'chat_id': CHANNEL,
+            'text': text,
+            'parse_mode': 'Markdown',
+        },
+        timeout=15,
+    )
+    result = res.json()
+    # Markdown xato bersa, oddiy matn bilan qayta urinish
+    if not result.get('ok') and 'parse' in result.get('description', '').lower():
+        log.warning('[TG] Markdown xato — oddiy matn bilan qayta yuborilmoqda')
+        res = requests.post(
+            f'https://api.telegram.org/bot{TOKEN}/sendMessage',
+            json={'chat_id': CHANNEL, 'text': text},
+            timeout=15,
+        )
+        result = res.json()
+    return result
 
 
 # ── Auto yangilik yuborish ────────────────────────────────
