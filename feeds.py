@@ -29,33 +29,40 @@ LOW_KEYWORDS = [
     'serie a', 'ligue 1', 'la liga', 'mls', 'eredivisie',
 ]
 
+# ── Qattiq blacklist — bu so'zlar bo'lsa maqola o'tkazilmaydi ──
+BLACKLIST_PHRASES = [
+    # Ayollar futboli
+    "women's", "women's super league", "wsl", "lionesses", "barclays women",
+    "women's football", "women's world cup",
+    # Boshqa ligalar
+    'scottish premiership', 'scottish league', 'scottish cup',
+    'championship', 'league one', 'league two', 'league cup',
+    'fa trophy', 'national league', 'non-league',
+    # Boshqa sport turlari
+    'darts', 'premier league darts', 'snooker', 'cycling',
+    'swimming', 'athletics', 'olympics',
+    'soccer', 'cricket', 'boxing', 'rugby',
+    # Yoshlar va xalqaro
+    'under-21', 'under-23', 'u21', 'u23', 'youth team',
+    'international break', 'world cup qualifier', 'nations league',
+    'euro 2024', 'euro 2025', 'euro 2026',
+]
+
 
 def score_article(title: str, desc: str) -> int:
     text = f'{title} {desc}'.lower()
+
+    # ── Qattiq blacklist tekshiruvi ──
+    for phrase in BLACKLIST_PHRASES:
+        if phrase in text:
+            log.debug(f'[Filter] Blacklist: "{phrase}" → {title[:50]}')
+            return -999
+
     score = sum(10 for kw in HIGH_KEYWORDS if kw in text)
     score -= sum(20 for kw in LOW_KEYWORDS if kw in text)
     if any(w in text for w in ('breaking', 'official', 'confirmed')):
         score += 15
     return score
-
-
-def fetch_og_image(url: str) -> str | None:
-    """Maqola sahifasidan og:image URL ni oladi."""
-    try:
-        res = requests.get(url, timeout=6, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        })
-        res.raise_for_status()
-        match = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']', res.text)
-        if not match:
-            match = re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']', res.text)
-        if match:
-            img_url = match.group(1)
-            if img_url.startswith('http'):
-                return img_url
-    except Exception as e:
-        log.warning(f'[OGImage] {url}: {e}')
-    return None
 
 
 def fetch_news() -> list[dict]:
@@ -82,19 +89,12 @@ def fetch_news() -> list[dict]:
                 score = score_article(title, desc)
 
                 if score >= MIN_SCORE:
-                    # RSS dan thumbnail olishga urinish
-                    image_url = None
-                    media = entry.get('media_thumbnail') or entry.get('media_content')
-                    if media and isinstance(media, list) and media[0].get('url'):
-                        image_url = media[0]['url']
-
                     seen.add(url)
                     articles.append({
                         'url': url,
                         'title': title,
                         'description': desc[:300],
                         'score': score,
-                        'image_url': image_url,
                     })
         except Exception as e:
             log.error(f'[RSS] {feed_url}: {e}')
@@ -105,6 +105,7 @@ def fetch_news() -> list[dict]:
 
 
 def fetch_article_text(url: str) -> str | None:
+    """Maqola matnini olish. Avval trafilatura, keyin oddiy requests."""
     try:
         import trafilatura
         downloaded = trafilatura.fetch_url(url)
@@ -130,3 +131,33 @@ def fetch_article_text(url: str) -> str | None:
     except Exception as e:
         log.warning(f'[FetchText] {url}: {e}')
         return None
+
+
+def fetch_og_image(url: str) -> str | None:
+    """Maqoladan og:image URL olish."""
+    if not url:
+        return None
+    try:
+        res = requests.get(url, timeout=8, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Accept': 'text/html',
+        })
+        res.raise_for_status()
+        # og:image meta tagini qidirish
+        match = re.search(
+            r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\'](https?://[^"\']+)["\']',
+            res.text
+        )
+        if not match:
+            # Ba'zi saytlarda tartib teskari bo'ladi
+            match = re.search(
+                r'<meta[^>]+content=["\'](https?://[^"\']+)["\'][^>]+property=["\']og:image["\']',
+                res.text
+            )
+        if match:
+            image_url = match.group(1)
+            log.info(f'[OGImage] ✓ Topildi: {image_url[:60]}')
+            return image_url
+    except Exception as e:
+        log.warning(f'[OGImage] {url}: {e}')
+    return None
