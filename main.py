@@ -13,7 +13,7 @@ from agents import generate_post
 
 log = logging.getLogger(__name__)
 
-
+# ── Telegram yordamchi ────────────────────────────────────
 def tg_send(chat_id: int | str, text: str, reply_markup: dict | None = None) -> dict:
     payload: dict = {'chat_id': chat_id, 'text': text}
     if reply_markup:
@@ -25,57 +25,32 @@ def tg_send(chat_id: int | str, text: str, reply_markup: dict | None = None) -> 
     )
     return res.json()
 
+def tg_channel(text: str) -> dict:
+    """Rasimsiz oddiy xabar yuborish."""
+    return tg_send(CHANNEL, text)
 
-def tg_channel(text: str, image_url: str | None = None) -> dict:
-    """Kanalga rasm bilan yoki rasmsiz yuboradi."""
-    if image_url:
-        # Avval sendPhoto bilan urinish
-        try:
-            res = requests.post(
-                f'https://api.telegram.org/bot{TOKEN}/sendPhoto',
-                json={
-                    'chat_id': CHANNEL,
-                    'photo': image_url,
-                    'caption': text,
-                    'parse_mode': 'Markdown',
-                },
-                timeout=15,
-            )
-            result = res.json()
-            if result.get('ok'):
-                return result
-            log.warning(f'[TG] sendPhoto xato: {result.get("description")} — rasmsiz yuborilmoqda')
-        except Exception as e:
-            log.warning(f'[TG] sendPhoto exception: {e} — rasmsiz yuborilmoqda')
-
-    # Rasmsiz yoki rasm xato bo'lsa — oddiy matn
+def tg_channel_photo(text: str, image_url: str) -> dict:
+    """Rasm + matn (caption) yuborish."""
     res = requests.post(
-        f'https://api.telegram.org/bot{TOKEN}/sendMessage',
+        f'https://api.telegram.org/bot{TOKEN}/sendPhoto',
         json={
             'chat_id': CHANNEL,
-            'text': text,
-            'parse_mode': 'Markdown',
+            'photo': image_url,
+            'caption': text,
         },
         timeout=15,
     )
-    result = res.json()
-    if not result.get('ok') and 'parse' in result.get('description', '').lower():
-        log.warning('[TG] Markdown xato — oddiy matn bilan qayta yuborilmoqda')
-        res = requests.post(
-            f'https://api.telegram.org/bot{TOKEN}/sendMessage',
-            json={'chat_id': CHANNEL, 'text': text},
-            timeout=15,
-        )
-        result = res.json()
-    return result
+    return res.json()
 
 
+# ── Admin tekshiruvi ──────────────────────────────────────
 def is_admin(chat_id: int) -> bool:
     if not ADMIN_IDS:
         return True
     return chat_id in ADMIN_IDS
 
 
+# ── Auto yangilik yuborish ────────────────────────────────
 def auto_news_post() -> bool:
     log.info('[Auto] Yangilik qidirilmoqda...')
     articles = fetch_news()
@@ -90,6 +65,15 @@ def auto_news_post() -> bool:
         log.info(f'[Auto] Qayta ishlanmoqda (score:{article["score"]}): {article["title"][:60]}')
         try:
             post = generate_post(article)
+        except ValueError as e:
+            # NOT_PL — Premier League emas, o'tkazib yuboriladi
+            if 'NOT_PL' in str(e):
+                log.info(f'[Auto] PL emas — o\'tkazib yuborildi: {article["title"][:50]}')
+                mark_processed(article['url'], article['title'], 0)
+                continue
+            log.error(f'[Auto] ValueError: {e}')
+            mark_processed(article['url'], article['title'], article['score'])
+            continue
         except Exception as e:
             log.error(f'[Auto] AI xato: {e}')
             mark_processed(article['url'], article['title'], article['score'])
@@ -99,16 +83,21 @@ def auto_news_post() -> bool:
             mark_processed(article['url'], article['title'], article['score'])
             continue
 
-        # Rasm URL — RSS dan topilmagan bo'lsa og:image dan olishga urinish
-        image_url = article.get('image_url')
-        if not image_url and article.get('url'):
-            log.info('[Auto] RSS da rasm yo\'q — og:image qidirilmoqda...')
-            image_url = fetch_og_image(article['url'])
+        # ── Rasm olishga urinish ──
+        image_url = fetch_og_image(article['url'])
 
-        result = tg_channel(post, image_url)
+        if image_url:
+            result = tg_channel_photo(post, image_url)
+            # Rasm yuborishda xato bo'lsa — rasmsiz yuboriladi
+            if not result.get('ok'):
+                log.warning(f'[Auto] Rasm yuborishda xato: {result.get("description")} — rasmsiz yuborilmoqda')
+                result = tg_channel(post)
+        else:
+            result = tg_channel(post)
+
         if result.get('ok'):
             mark_processed(article['url'], article['title'], article['score'])
-            log.info(f'[Auto] ✅ Yuborildi (rasm: {"bor" if image_url else "yo\'q"}): {article["title"][:50]}')
+            log.info(f'[Auto] ✅ Yuborildi{"(rasm bilan)" if image_url else ""}: {article["title"][:60]}')
             return True
         else:
             log.error(f'[Auto] TG xato: {result.get("description")}')
@@ -117,9 +106,11 @@ def auto_news_post() -> bool:
     return False
 
 
+# ── Foydalanuvchi holati ──────────────────────────────────
 pending: dict[int, dict] = {}
 
 
+# ── Update handler ────────────────────────────────────────
 def handle_update(update: dict) -> None:
     msg = update.get('message', {})
     if not msg:
@@ -134,9 +125,8 @@ def handle_update(update: dict) -> None:
 
     if text == '/start':
         tg_send(chat_id,
-            'Ingliz Futboli Bot v4.1\n\n'
-            '3 agent: Researcher + Writer + Editor\n'
-            'Rasm: maqola thumbnail avtomatik\n\n'
+            'Ingliz Futboli Bot v4.0\n\n'
+            '3 agent: Researcher + Writer + Editor\n\n'
             'Matn yuboring — professional post\n'
             '/yangilik — RSS dan yangi xabar olish\n'
             '/stat — Statistika\n'
@@ -188,7 +178,7 @@ def handle_update(update: dict) -> None:
             return
         tg_send(chat_id, '⏳ 3 agent ishlayapti...')
         try:
-            article = {'title': text, 'description': '', 'url': None, 'score': 100, 'image_url': None}
+            article = {'title': text, 'description': '', 'url': None, 'score': 100}
             post = generate_post(article)
             pending[chat_id] = {'text': post}
             tg_send(chat_id, f'Ko\'rib chiqing:\n\n{post}')
@@ -203,6 +193,7 @@ def handle_update(update: dict) -> None:
             tg_send(chat_id, f'❌ Xatolik: {e}')
 
 
+# ── Webhook HTTP handler ──────────────────────────────────
 class WebhookHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get('Content-Length', 0))
@@ -219,12 +210,13 @@ class WebhookHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b'Ingliz Futboli Bot v4.1')
+        self.wfile.write(b'Ingliz Futboli Bot v4.0')
 
     def log_message(self, *args):
         pass
 
 
+# ── Background news loop ──────────────────────────────────
 def news_loop() -> None:
     time.sleep(10)
     while True:
@@ -235,6 +227,7 @@ def news_loop() -> None:
         time.sleep(INTERVAL)
 
 
+# ── Entry point ───────────────────────────────────────────
 if __name__ == '__main__':
     log.info(f'[Server] Port {PORT} da ishga tushdi | Admin IDlar: {ADMIN_IDS}')
     threading.Thread(target=news_loop, daemon=True).start()
