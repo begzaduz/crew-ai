@@ -7,7 +7,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import requests
 
 from config import TOKEN, CHANNEL, ADMIN_IDS, PORT, INTERVAL
-from database import is_processed, mark_processed, clear_cache, get_stats
+from database import is_processed, mark_processed, clear_cache, get_stats, init_db
 from feeds import fetch_news
 from agents import generate_post
 
@@ -205,6 +205,7 @@ def news_loop() -> None:
 
 # ── Entry point ───────────────────────────────────────────
 if __name__ == '__main__':
+    init_db()
     log.info(f'[Server] Port {PORT} da ishga tushdi | Admin IDlar: {ADMIN_IDS}')
     threading.Thread(target=news_loop, daemon=True).start()
     server = HTTPServer(('0.0.0.0', PORT), WebhookHandler)
