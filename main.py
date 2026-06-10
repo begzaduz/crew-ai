@@ -1,4 +1,5 @@
 import json
+import re
 import time
 import logging
 import threading
@@ -8,7 +9,7 @@ import requests
 
 from config import TOKEN, CHANNEL, ADMIN_IDS, PORT, INTERVAL
 from database import is_processed, mark_processed, clear_cache, get_stats, init_db
-from feeds import fetch_news
+from feeds import fetch_news, fetch_og_image
 from agents import generate_post
 
 log = logging.getLogger(__name__)
@@ -25,18 +26,60 @@ def tg_send(chat_id: int | str, text: str, reply_markup: dict | None = None) -> 
     )
     return res.json()
 
-def tg_channel(text: str) -> dict:
-    """Kanalga HTML parse_mode bilan yuborish — sarlavha bold ko'rinadi."""
-    res = requests.post(
-        f'https://api.telegram.org/bot{TOKEN}/sendMessage',
-        json={
-            'chat_id': CHANNEL,
-            'text': text,
-            'parse_mode': 'HTML',
-        },
-        timeout=15,
-    )
-    return res.json()
+
+def tg_channel(text: str, image_url: str | None = None) -> dict:
+    """
+    Kanalga yuborish:
+    - image_url bo'lsa: sendPhoto (rasm + caption HTML)
+    - bo'lmasa: sendMessage (faqat matn HTML)
+    """
+    text = _clean_post(text)
+
+    if image_url:
+        caption = text[:1024]
+        res = requests.post(
+            f'https://api.telegram.org/bot{TOKEN}/sendPhoto',
+            json={
+                'chat_id': CHANNEL,
+                'photo': image_url,
+                'caption': caption,
+                'parse_mode': 'HTML',
+            },
+            timeout=15,
+        )
+        result = res.json()
+        if not result.get('ok'):
+            log.warning(f'[TG] sendPhoto xato: {result.get("description")} — matn sifatida yuborilmoqda')
+            return tg_channel(text, image_url=None)
+        return result
+    else:
+        res = requests.post(
+            f'https://api.telegram.org/bot{TOKEN}/sendMessage',
+            json={
+                'chat_id': CHANNEL,
+                'text': text,
+                'parse_mode': 'HTML',
+            },
+            timeout=15,
+        )
+        return res.json()
+
+
+def _clean_post(post: str) -> str:
+    """Sarlavhadan emoji/icon/hashtag olib tashlaydi, faqat <b> matn qoladi."""
+    lines = post.split('\n')
+    cleaned = []
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if i == 0:
+            bold_match = re.search(r'<b>(.*?)</b>', stripped)
+            if bold_match:
+                cleaned.append(f'<b>{bold_match.group(1)}</b>')
+            else:
+                cleaned.append(stripped)
+        else:
+            cleaned.append(line)
+    return '\n'.join(cleaned)
 
 
 # ── Admin tekshiruvi ──────────────────────────────────────
@@ -70,7 +113,10 @@ def auto_news_post() -> bool:
             mark_processed(article['url'], article['title'], article['score'])
             continue
 
-        result = tg_channel(post)
+        image_url = fetch_og_image(article['url']) if article.get('url') else None
+        log.info(f'[Auto] Rasm: {image_url[:60] if image_url else "yoq"}')
+
+        result = tg_channel(post, image_url=image_url)
         if result.get('ok'):
             mark_processed(article['url'], article['title'], article['score'])
             log.info(f'[Auto] ✅ Yuborildi: {article["title"][:60]}')
@@ -140,7 +186,8 @@ def handle_update(update: dict) -> None:
         tg_send(chat_id, '✅ Kesh tozalandi! /yangilik yuboring.')
 
     elif text == 'Yuborish' and chat_id in pending:
-        tg_channel(pending.pop(chat_id)['text'])
+        p = pending.pop(chat_id)
+        tg_channel(p['text'], image_url=p.get('image_url'))
         tg_send(chat_id, '✅ Kanalga yuborildi!',
                 reply_markup={'remove_keyboard': True})
 
@@ -156,7 +203,7 @@ def handle_update(update: dict) -> None:
         try:
             article = {'title': text, 'description': '', 'url': None, 'score': 100}
             post = generate_post(article)
-            pending[chat_id] = {'text': post}
+            pending[chat_id] = {'text': post, 'image_url': None}
             tg_send(chat_id, f'Ko\'rib chiqing:\n\n{post}')
             tg_send(chat_id, 'Tasdiqlang:',
                     reply_markup={
