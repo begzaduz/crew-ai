@@ -53,9 +53,9 @@ NAMES = {
 
 def apply_names(text: str) -> str:
     """
-    Ingliz nomlarini o'zbekchaga almashtiradi.
-    \b o'rniga (?<![a-zA-Z]) / (?![a-zA-Z]) ishlatiladi —
-    o'zbek suffixlari (ning, da, ga, ni, lar...) bilan ham ishlaydi.
+    O'zbek nomlarini almashtiradi.
+    \b o'rniga lookahead/lookbehind — o'zbek suffixlari bilan ishlaydi
+    (ning, ga, da, ni, dan, dagi va h.k.)
     """
     if not text:
         return ''
@@ -64,6 +64,25 @@ def apply_names(text: str) -> str:
         pattern = rf'(?<![a-zA-Z]){re.escape(eng)}(?![a-zA-Z])'
         result = re.sub(pattern, uzb, result, flags=re.IGNORECASE)
     return result
+
+
+def make_bold_title(post: str) -> str:
+    """
+    Postning birinchi qatorini (sarlavhasini) HTML <b> bilan o'raydi.
+    Emoji bilan boshlangan qatorni ham to'g'ri ishlaydi.
+    """
+    lines = post.split('\n')
+    if not lines:
+        return post
+    # Birinchi bo'sh bo'lmagan qatorni topamiz
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped and not stripped.startswith('@'):
+            # Allaqachon <b> bilan o'ralgan bo'lsa qayta o'ramaymiz
+            if not stripped.startswith('<b>'):
+                lines[i] = f'<b>{stripped}</b>'
+            break
+    return '\n'.join(lines)
 
 
 # ── Groq API — retry bilan ────────────────────────────────
@@ -97,10 +116,12 @@ def groq_call(system_prompt: str, user_prompt: str,
 
 # ── Rule-based validator ──────────────────────────────────
 def validate_post(post: str) -> tuple[bool, str]:
-    if len(post.strip()) < 50:
+    # HTML teglarini hisobga olmaslik uchun clean text tekshiramiz
+    clean = re.sub(r'<[^>]+>', '', post)
+    if len(clean.strip()) < 50:
         return False, 'Post juda qisqa (< 50 belgi)'
-    if len(post) > 1000:
-        return False, f'Post juda uzun ({len(post)} belgi, max 1000)'
+    if len(clean) > 1000:
+        return False, f'Post juda uzun ({len(clean)} belgi, max 1000)'
     markdown_patterns = [r'\*\*', r'__', r'\[.+\]\(.+\)', r'^#{1,6} ']
     for pat in markdown_patterns:
         if re.search(pat, post, re.MULTILINE):
@@ -116,12 +137,6 @@ def ensure_channel_tag(post: str, tag: str = '@Inglizfutbol') -> str:
 
 # ── Agent 1: Researcher ───────────────────────────────────
 RESEARCHER_PROMPT = """You are a Premier League football news analyst. Extract ONLY real facts from the article.
-
-CRITICAL: If this article is NOT about the English Premier League (men's top division),
-respond with exactly: NOT_PL
-
-This includes: women's football (WSL), Scottish league, Championship, League One,
-international matches, other sports (cricket, boxing, darts, rugby, tennis, golf, etc.)
 
 Extract exactly:
 1. MAIN: One sentence — who did what (club, player, action, result)
@@ -154,12 +169,6 @@ def researcher_agent(article: dict) -> str:
         f"Analyze this Premier League news:\n\nHEADLINE: {article['title']}\nCONTENT: {content[:1200]}",
         temperature=0.2, max_tokens=300,
     )
-
-    # Ikkinchi qavat himoya — PL emas bo'lsa to'xtat
-    if result.strip().startswith('NOT_PL'):
-        log.info(f'[Researcher] PL emas, o\'tkazib yuborildi: {article["title"][:50]}')
-        raise ValueError('NOT_PL')
-
     log.info(f'[Researcher] ✓ {article["title"][:50]}')
     return result
 
@@ -187,7 +196,7 @@ FUTBOL ATAMALAR:
 
 FORMAT (aniq shu tartibda):
 [BREAKING=YES bo'lsa: #BREAKING]
-[Emoji] [Sarlavha — maksimal 8 so'z, jozibali]
+[Emoji] [Sarlavha — maksimal 6 so'z]
 
 [Asosiy gap — 1-2 jumla. Eng muhim fakt birinchi. Faol gap.]
 
@@ -199,8 +208,24 @@ FORMAT (aniq shu tartibda):
 
 @Inglizfutbol
 
-QOIDALAR:
-- Faqat o'zbek tili. Faol gap. Qisqa jumlalar.
+SARLAVHA QOIDALARI:
+- Harakat fe'li yoki raqam bo'lsin (sotmoqchi, rad etdi, £80m, 3 ta gol)
+- Savol yoki keskin bayonot ham yaxshi
+- 6 so'zdan oshmasin
+- Misol: "Yunayted £80m ga rozi emas" / "Saloh ketadimi?" / "Arsenal yangi hujumchi izlayapti"
+
+KLUB NOMLARI QOIDALARI:
+- Klub nomlarini HECH QACHON tirnoq ichiga olma
+- To'g'ri: Vest Hemning o'yinchisi
+- Xato: "Vest Hem"ning o'yinchisi
+
+JUMLA QOIDALARI:
+- Qisqa jumlalar — 15 so'zdan oshmasin
+- Ketma-ket "ning" konstruktsiyasidan qoching
+- Faol gap: "Yunayted sotib oldi" (passiv emas: "sotib olindi")
+
+UMUMIY QOIDALAR:
+- Faqat o'zbek tili
 - Markdown yo'q (* _ [ ] **)
 - O'ylab topilgan fakt yo'q — faqat berilgan faktlar
 - 400-600 belgi
@@ -228,7 +253,9 @@ EDITOR_PROMPT = """Sen qattiq o'zbek sport muharririsan. Postni tekshir:
 5. @Inglizfutbol bilan tugadimi?
 6. Faol gap ishlatildimi?
 7. Takrorlanish yo'qmi?
-8. Sarlavha 8 so'zdan oshmaydimi?
+8. Sarlavha 6 so'zdan oshmaydimi?
+9. Klub nomlari tirnoqsizmi?
+10. Ketma-ket "ning" konstruktsiyasi yo'qmi?
 
 Agar HAMMA tekshiruvdan o'tsa: APPROVED yoz
 Agar muammo bo'lsa: REJECTED: [sabab] yoz, keyin tuzatilgan versiyani FIXED: dan keyin yoz"""
@@ -253,17 +280,24 @@ def editor_agent(post: str, title: str) -> str:
 
 # ── Pipeline: 3 agent zanjiri ─────────────────────────────
 def generate_post(article: dict) -> str:
-    """Researcher → Writer → Editor → Validator → apply_names"""
+    """Researcher → Writer → Editor → Validator → apply_names → bold title"""
     log.info(f'[Pipeline] Boshlandi: {article["title"][:60]}')
 
     facts    = researcher_agent(article)
     raw_post = writer_agent(article, facts)
     edited   = editor_agent(raw_post, article['title'])
 
+    # Rule-based validator
     post = ensure_channel_tag(edited)
     ok, reason = validate_post(post)
     if not ok:
         log.warning(f'[Validator] Rad: {reason} — original post qaytarildi')
         post = ensure_channel_tag(raw_post)
 
-    return apply_names(post)
+    # O'zbek nomlari (suffix-safe regex)
+    post = apply_names(post)
+
+    # Sarlavhani bold qilish
+    post = make_bold_title(post)
+
+    return post
