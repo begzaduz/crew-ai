@@ -24,7 +24,7 @@ GROQ_MODEL   = 'llama-3.3-70b-versatile'
 PORT         = int(os.getenv('PORT', 8080))
 
 # ── Bot davri ─────────────────────────────────────────────
-INTERVAL     = 10 * 60   # 10 daqiqa
+INTERVAL     = 30 * 60   # 10 daqiqa
 ARTICLE_MAX_AGE_HOURS =48
 
 # ── Scoring ───────────────────────────────────────────────
