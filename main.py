@@ -8,7 +8,7 @@ import requests
 
 from config import TOKEN, CHANNEL, ADMIN_IDS, PORT, INTERVAL
 from database import is_processed, mark_processed, clear_cache, get_stats
-from feeds import fetch_news, fetch_og_image
+from feeds import fetch_news
 from agents import generate_post
 
 log = logging.getLogger(__name__)
@@ -26,17 +26,13 @@ def tg_send(chat_id: int | str, text: str, reply_markup: dict | None = None) -> 
     return res.json()
 
 def tg_channel(text: str) -> dict:
-    """Rasimsiz oddiy xabar yuborish."""
-    return tg_send(CHANNEL, text)
-
-def tg_channel_photo(text: str, image_url: str) -> dict:
-    """Rasm + matn (caption) yuborish."""
+    """Kanalga HTML parse_mode bilan yuborish — sarlavha bold ko'rinadi."""
     res = requests.post(
-        f'https://api.telegram.org/bot{TOKEN}/sendPhoto',
+        f'https://api.telegram.org/bot{TOKEN}/sendMessage',
         json={
             'chat_id': CHANNEL,
-            'photo': image_url,
-            'caption': text,
+            'text': text,
+            'parse_mode': 'HTML',
         },
         timeout=15,
     )
@@ -65,15 +61,6 @@ def auto_news_post() -> bool:
         log.info(f'[Auto] Qayta ishlanmoqda (score:{article["score"]}): {article["title"][:60]}')
         try:
             post = generate_post(article)
-        except ValueError as e:
-            # NOT_PL — Premier League emas, o'tkazib yuboriladi
-            if 'NOT_PL' in str(e):
-                log.info(f'[Auto] PL emas — o\'tkazib yuborildi: {article["title"][:50]}')
-                mark_processed(article['url'], article['title'], 0)
-                continue
-            log.error(f'[Auto] ValueError: {e}')
-            mark_processed(article['url'], article['title'], article['score'])
-            continue
         except Exception as e:
             log.error(f'[Auto] AI xato: {e}')
             mark_processed(article['url'], article['title'], article['score'])
@@ -83,21 +70,10 @@ def auto_news_post() -> bool:
             mark_processed(article['url'], article['title'], article['score'])
             continue
 
-        # ── Rasm olishga urinish ──
-        image_url = fetch_og_image(article['url'])
-
-        if image_url:
-            result = tg_channel_photo(post, image_url)
-            # Rasm yuborishda xato bo'lsa — rasmsiz yuboriladi
-            if not result.get('ok'):
-                log.warning(f'[Auto] Rasm yuborishda xato: {result.get("description")} — rasmsiz yuborilmoqda')
-                result = tg_channel(post)
-        else:
-            result = tg_channel(post)
-
+        result = tg_channel(post)
         if result.get('ok'):
             mark_processed(article['url'], article['title'], article['score'])
-            log.info(f'[Auto] ✅ Yuborildi{"(rasm bilan)" if image_url else ""}: {article["title"][:60]}')
+            log.info(f'[Auto] ✅ Yuborildi: {article["title"][:60]}')
             return True
         else:
             log.error(f'[Auto] TG xato: {result.get("description")}')
