@@ -52,37 +52,12 @@ NAMES = {
 }
 
 def apply_names(text: str) -> str:
-    """
-    O'zbek nomlarini almashtiradi.
-    \b o'rniga lookahead/lookbehind — o'zbek suffixlari bilan ishlaydi
-    (ning, ga, da, ni, dan, dagi va h.k.)
-    """
     if not text:
         return ''
     result = text
     for eng, uzb in sorted(NAMES.items(), key=lambda x: -len(x[0])):
-        pattern = rf'(?<![a-zA-Z]){re.escape(eng)}(?![a-zA-Z])'
-        result = re.sub(pattern, uzb, result, flags=re.IGNORECASE)
+        result = re.sub(rf'(?<!\w){re.escape(eng)}(?!\w)', uzb, result, flags=re.IGNORECASE)
     return result
-
-
-def make_bold_title(post: str) -> str:
-    """
-    Postning birinchi qatorini (sarlavhasini) HTML <b> bilan o'raydi.
-    Emoji bilan boshlangan qatorni ham to'g'ri ishlaydi.
-    """
-    lines = post.split('\n')
-    if not lines:
-        return post
-    # Birinchi bo'sh bo'lmagan qatorni topamiz
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped and not stripped.startswith('@'):
-            # Allaqachon <b> bilan o'ralgan bo'lsa qayta o'ramaymiz
-            if not stripped.startswith('<b>'):
-                lines[i] = f'<b>{stripped}</b>'
-            break
-    return '\n'.join(lines)
 
 
 # ── Groq API — retry bilan ────────────────────────────────
@@ -116,12 +91,10 @@ def groq_call(system_prompt: str, user_prompt: str,
 
 # ── Rule-based validator ──────────────────────────────────
 def validate_post(post: str) -> tuple[bool, str]:
-    # HTML teglarini hisobga olmaslik uchun clean text tekshiramiz
-    clean = re.sub(r'<[^>]+>', '', post)
-    if len(clean.strip()) < 50:
+    if len(post.strip()) < 50:
         return False, 'Post juda qisqa (< 50 belgi)'
-    if len(clean) > 1000:
-        return False, f'Post juda uzun ({len(clean)} belgi, max 1000)'
+    if len(post) > 1000:
+        return False, f'Post juda uzun ({len(post)} belgi, max 1000)'
     markdown_patterns = [r'\*\*', r'__', r'\[.+\]\(.+\)', r'^#{1,6} ']
     for pat in markdown_patterns:
         if re.search(pat, post, re.MULTILINE):
@@ -174,9 +147,68 @@ def researcher_agent(article: dict) -> str:
 
 
 # ── Agent 2: Writer ───────────────────────────────────────
-WRITER_PROMPT = """Sen @Inglizfutbol Telegram kanaliga professional o'zbek sport jurnalistisan.
+WRITER_PROMPT = """Sen @Inglizfutbol Telegram kanali uchun professional sport muharriri va jurnalistisan.
 
-KLUB TAXALLUSLARI — juda kam ishtilsin:
+VAZIFA
+
+Berilgan ma'lumotlardan qisqa, aniq va ishonchli sport yangiligi yarat.
+
+ASOSIY QOIDALAR
+
+- Faqat berilgan faktlardan foydalan.
+- Hech qachon ma'lumot to'qib chiqma.
+- Taxminni fakt sifatida yozma.
+- Mish-mishni rasmiy yangilik sifatida ko'rsatma.
+- Sonlar, sanalar va statistikalarni o'zgartirma.
+- Eng muhim ma'lumot birinchi paragrafda bo'lsin.
+- Professional sport jurnalistikasi uslubida yoz.
+- Telegram uchun o'qilishi qulay format ishlat.
+- Sun'iy iboralar va ortiqcha gaplardan qoch.
+- Agar eng muhim faktni 15 ta so'z ichida aytish mumkin bo'lsa, uni birinchi jumlada ayt.
+
+YANGILIK TURLARI
+
+- TRANSFER
+- MATCH_REPORT
+- PRE_MATCH
+- INJURY
+- OFFICIAL
+- INTERVIEW
+- STATISTICS
+- RECORD
+- SUSPENSION
+- TOURNAMENT
+
+BREAKING
+
+Faqat juda muhim va yangi yangiliklarda ishlat:
+
+- Transfer tasdiqlansa
+- Murabbiy iste'fosi
+- Katta jarohat
+- Rasmiy tayinlov
+- Rekord darajadagi voqea
+
+EMOJI
+
+🚨 Muhim yangilik
+🔥 Transfer
+⚽ O'yin natijasi
+🏆 Sovrin
+🤕 Jarohat
+✅ Rasmiy
+📊 Statistika
+⭐ Yulduz futbolchi
+
+SARLAVHA
+
+- Maksimum 8 so'z
+- Qisqa va kuchli
+- Clickbait yo'q
+- Faktga asoslangan
+
+KLUB TAXALLUSLARI
+
 Arsenal = to'pchilar | Liverpool = qizillar | Chelsea = aristokratlar
 Man City = fuqarolar | Man Utd = qizil iblislar | Tottenham = xo'rozlar
 Newcastle = qarg'alar | Bournemouth = olchalar | West Ham = bolg'achilar
@@ -184,7 +216,8 @@ Crystal Palace = burgutlar | Wolves = bo'rilar | Brighton = qaldirg'ochlar
 Brentford = arilar | Everton = karamellar | Aston Villa = villalar
 Fulham = fulhamliklar | Nottingham Forest = o'rmonchilar
 
-FUTBOL ATAMALAR:
+FUTBOL ATAMALAR
+
 - "survival" / "stay up" = "qolish", "ligada qolish"
 - "relegation" = "past ligaga tushish"
 - "top four" = "to'rtlik"
@@ -194,49 +227,45 @@ FUTBOL ATAMALAR:
 - "penalty" = "jarima zarbasi"
 - "red card" = "qizil karta"
 
-FORMAT (aniq shu tartibda):
-[BREAKING=YES bo'lsa: #BREAKING]
-[Emoji] [Sarlavha — maksimal 6 so'z]
+FORMAT
 
-[Asosiy gap — 1-2 jumla. Eng muhim fakt birinchi. Faol gap.]
+[#BREAKING faqat kerak bo'lsa]
 
-[Tafsilot — 2-3 jumla. Raqamlar, statistika, jadval o'rni.]
+[Emoji] [Sarlavha]
 
-[🎙 "Iqtibos" — Ismi (faqat mavjud bo'lsa)]
+[Lead paragraf]
+Eng muhim ma'lumot.
 
-[Xulosa — jadval o'rni yoki keyingi o'yin]
+[Asosiy paragraf]
+Muhim tafsilotlar va kontekst.
+
+[Statistika yoki qo'shimcha fakt]
+Faqat mavjud bo'lsa.
+
+[🎙 Iqtibos]
+Faqat mavjud bo'lsa.
+
+[Yakuniy paragraf]
+Qisqa xulosa yoki keyingi voqea.
 
 @Inglizfutbol
 
-SARLAVHA QOIDALARI:
-- Harakat fe'li yoki raqam bo'lsin (sotmoqchi, rad etdi, £80m, 3 ta gol)
-- Savol yoki keskin bayonot ham yaxshi
-- 6 so'zdan oshmasin
-- Misol: "Yunayted £80m ga rozi emas" / "Saloh ketadimi?" / "Arsenal yangi hujumchi izlayapti"
+FORMAT TALABLARI
 
-KLUB NOMLARI QOIDALARI:
-- Klub nomlarini HECH QACHON tirnoq ichiga olma
-- To'g'ri: Vest Hemning o'yinchisi
-- Xato: "Vest Hem"ning o'yinchisi
+- Sarlavhadan keyin bitta bo'sh qator.
+- Har bir paragraf orasida bitta bo'sh qator.
+- Har bir paragraf 1–2 jumladan iborat bo'lsin.
+- Uzun matn bloklari yaratma.
+- O'qilishi oson bo'lsin.
 
-JUMLA QOIDALARI:
-- Qisqa jumlalar — 15 so'zdan oshmasin
-- Ketma-ket "ning" konstruktsiyasidan qoching
-- Faol gap: "Yunayted sotib oldi" (passiv emas: "sotib olindi")
-
-UMUMIY QOIDALAR:
-- Faqat o'zbek tili
-- Markdown yo'q (* _ [ ] **)
-- O'ylab topilgan fakt yo'q — faqat berilgan faktlar
-- 400-600 belgi
-- Takrorlanish YO'Q
-- OXIRIDA doim @Inglizfutbol bo'lishi shart
-- Faqat postni yoz, boshqa hech narsa yo'q"""
+Natijada faqat tayyor Telegram post qaytar.
+Hech qanday izoh yozma.
+Hech qanday markdown ishlatma."""
 
 def writer_agent(article: dict, facts: str) -> str:
     result = groq_call(
         WRITER_PROMPT,
-        f"Write Uzbek Telegram post:\n\nHEADLINE: {article['title']}\nFACTS:\n{facts}\n\nWrite ONLY the post:",
+        f"Yangilik yoz:\n\nSARLAVHA: {article['title']}\nFAKTLAR:\n{facts}\n\nFaqat postni yoz:",
         temperature=0.5, max_tokens=600,
     )
     log.info(f'[Writer] ✓ {len(result)} belgi')
@@ -247,15 +276,13 @@ def writer_agent(article: dict, facts: str) -> str:
 EDITOR_PROMPT = """Sen qattiq o'zbek sport muharririsan. Postni tekshir:
 
 1. O'zbek tilimi? (rus/ingliz so'z yo'qmi)
-2. 400-600 belgi orasidami?
-3. Markdown belgilari yo'qmi (* _ [ ] **)?
-4. O'ylab topilgan fakt yo'qmi?
-5. @Inglizfutbol bilan tugadimi?
-6. Faol gap ishlatildimi?
-7. Takrorlanish yo'qmi?
-8. Sarlavha 6 so'zdan oshmaydimi?
-9. Klub nomlari tirnoqsizmi?
-10. Ketma-ket "ning" konstruktsiyasi yo'qmi?
+2. Sarlavhadan keyin bo'sh qator bormi?
+3. Har paragraf orasida bo'sh qator bormi?
+4. Har paragraf 1-2 jumladan iborat?
+5. Markdown belgilari yo'qmi (* _ [ ] **)?
+6. O'ylab topilgan fakt yo'qmi?
+7. @Inglizfutbol bilan tugadimi?
+8. Sarlavha 8 so'zdan oshmaydimi?
 
 Agar HAMMA tekshiruvdan o'tsa: APPROVED yoz
 Agar muammo bo'lsa: REJECTED: [sabab] yoz, keyin tuzatilgan versiyani FIXED: dan keyin yoz"""
@@ -278,26 +305,18 @@ def editor_agent(post: str, title: str) -> str:
         return post
 
 
-# ── Pipeline: 3 agent zanjiri ─────────────────────────────
+# ── Pipeline ──────────────────────────────────────────────
 def generate_post(article: dict) -> str:
-    """Researcher → Writer → Editor → Validator → apply_names → bold title"""
     log.info(f'[Pipeline] Boshlandi: {article["title"][:60]}')
 
     facts    = researcher_agent(article)
     raw_post = writer_agent(article, facts)
     edited   = editor_agent(raw_post, article['title'])
 
-    # Rule-based validator
     post = ensure_channel_tag(edited)
     ok, reason = validate_post(post)
     if not ok:
         log.warning(f'[Validator] Rad: {reason} — original post qaytarildi')
         post = ensure_channel_tag(raw_post)
 
-    # O'zbek nomlari (suffix-safe regex)
-    post = apply_names(post)
-
-    # Sarlavhani bold qilish
-    post = make_bold_title(post)
-
-    return post
+    return apply_names(post)
