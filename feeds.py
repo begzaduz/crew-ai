@@ -10,8 +10,7 @@ log = logging.getLogger(__name__)
 
 RSS_FEEDS = [
     'https://www.theguardian.com/football/premierleague/rss',
-    'https://feeds.bbci.co.uk/sport/football/rss.xml',
-    'https://www.skysports.com/rss/12040',
+'https://www.skysports.com/rss/12040',
 ]
 
 HIGH_KEYWORDS = [
