@@ -81,6 +81,7 @@ def groq_call(system_prompt: str, user_prompt: str,
                     system_instruction=system_prompt,
                     temperature=temperature,
                     max_output_tokens=max_tokens,
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
                 ),
             )
             return (resp.text or '').strip()
