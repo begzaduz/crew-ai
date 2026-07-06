@@ -7,7 +7,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 
 import requests
 
-from config import TOKEN, CHANNEL, ADMIN_IDS, PORT, INTERVAL
+from config import TOKEN, CHANNEL, ADMIN_IDS, PORT, INTERVAL, WEBHOOK_SECRET
 from database import is_processed, mark_processed, clear_cache, get_stats, init_db
 from feeds import fetch_news, fetch_og_image
 from agents import generate_post
@@ -141,8 +141,12 @@ def handle_update(update: dict) -> None:
     chat_id: int = msg['chat']['id']
     text: str = msg.get('text', '').strip()
 
+    if text == '/whoami':
+        tg_send(chat_id, f'Sizning chat_id: {chat_id}\nADMIN_IDS: {ADMIN_IDS}')
+        return
+
     if text.startswith('/') and not is_admin(chat_id):
-        tg_send(chat_id, '⛔ Siz admin emassiz.')
+        tg_send(chat_id, f'⛔ Siz admin emassiz. (chat_id: {chat_id})')
         return
 
     if text == '/start':
@@ -219,6 +223,14 @@ def handle_update(update: dict) -> None:
 # ── Webhook HTTP handler ──────────────────────────────────
 class WebhookHandler(BaseHTTPRequestHandler):
     def do_POST(self):
+        incoming_secret = self.headers.get('X-Telegram-Bot-Api-Secret-Token', '')
+        if incoming_secret != WEBHOOK_SECRET:
+            log.warning('[Webhook] Noto\'g\'ri yoki yo\'q secret token — so\'rov rad etildi.')
+            self.send_response(401)
+            self.end_headers()
+            self.wfile.write(b'Unauthorized')
+            return
+
         length = int(self.headers.get('Content-Length', 0))
         body = self.rfile.read(length)
         self.send_response(200)
