@@ -125,11 +125,17 @@ STRICT RULES:
 - "top four" = "to'rtlik"
 - "title race" = "chempionlik kurashi"
 
+LANGUAGE RULE (CRITICAL):
+- Write MAIN, STATS, and CONTEXT entirely in Uzbek (Latin script), even though the source article is in English.
+- Do NOT copy English sentences or phrases from the article into these fields.
+- Club and player names may stay in their English form (they will be converted separately) — but all other words must be Uzbek.
+- QUOTE may keep the original quoted words if translating would risk changing their meaning, but the speaker attribution should still read naturally.
+
 Respond EXACTLY in this format:
-MAIN: [fact]
+MAIN: [fact, in Uzbek]
 STATS: [numbers or NONE]
 QUOTE: [quote — Name or NONE]
-CONTEXT: [context or NONE]
+CONTEXT: [context or NONE, in Uzbek]
 BREAKING: [YES or NO]"""
 
 def researcher_agent(article: dict) -> str:
@@ -206,6 +212,10 @@ SARLAVHA
 - Qisqa va kuchli
 - Clickbait yo'q
 - Faktga asoslangan
+- Senga "SARLAVHA:" nomi bilan berilgan matn — bu manbaning ASL (ko'pincha ingliz tilidagi) sarlavhasi, faqat mazmunni tushunish uchun berilgan
+- Uni SO'ZMA-SO'Z yoki QISMAN ko'chirish QATʼIYAN TAQIQLANADI
+- O'zing FAKTLAR asosida to'liq YANGI, original o'zbekcha sarlavha yoz
+- Sarlavhada bitta ham ingliz so'zi yoki iborasi bo'lmasligi kerak (klub/futbolchi nomlaridan tashqari)
 
 KLUB TAXALLUSLARI
 
@@ -275,7 +285,7 @@ def writer_agent(article: dict, facts: str) -> str:
 # ── Agent 3: Editor ───────────────────────────────────────
 EDITOR_PROMPT = """Sen qattiq o'zbek sport muharririsan. Postni tekshir:
 
-1. O'zbek tilimi? (rus/ingliz so'z yo'qmi)
+1. Sarlavha VA matn 100% o'zbek tilidami? (Klub/futbolchi ismidan tashqari BITTA HAM ingliz so'z yoki ibora bo'lmasligi kerak — bo'lsa, bu jiddiy xato, REJECTED qil)
 2. Sarlavhadan keyin bo'sh qator bormi?
 3. Har paragraf orasida bo'sh qator bormi?
 4. Har paragraf 1-2 jumladan iborat?
