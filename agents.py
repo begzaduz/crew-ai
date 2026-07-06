@@ -2,12 +2,14 @@ import re
 import time
 import logging
 
-from groq import Groq, RateLimitError, APIStatusError
-from config import GROQ_KEY, GROQ_MODEL
+from google import genai
+from google.genai import types
+from google.genai.errors import ClientError, ServerError
+from config import GEMINI_KEY, GEMINI_MODEL
 from feeds import fetch_article_text
 
 log = logging.getLogger(__name__)
-groq_client = Groq(api_key=GROQ_KEY)
+gemini_client = genai.Client(api_key=GEMINI_KEY)
 
 # ── O'zbek nomlari ────────────────────────────────────────
 NAMES = {
@@ -60,33 +62,44 @@ def apply_names(text: str) -> str:
     return result
 
 
-# ── Groq API — retry bilan ────────────────────────────────
+# ── Gemini API — retry bilan ──────────────────────────────
 def groq_call(system_prompt: str, user_prompt: str,
               temperature: float = 0.4, max_tokens: int = 700) -> str:
-    delays = [60, 120]
+    """
+    Gemini ga so'rov. Rate limit (429) bo'lsa 3 marta qayta urinadi:
+    1-urinish: 30s kutadi, 2-urinish: 60s, 3-urinish: xato ko'taradi.
+    Funksiya nomi 'groq_call' saqlanib qoldi — pastdagi agentlar shu nomni
+    chaqiradi, ularga tegmaslik uchun.
+    """
+    delays = [30, 60]
     for attempt, delay in enumerate(delays + [None], start=1):
         try:
-            resp = groq_client.chat.completions.create(
-                model=GROQ_MODEL,
-                messages=[
-                    {'role': 'system', 'content': system_prompt},
-                    {'role': 'user',   'content': user_prompt},
-                ],
-                max_tokens=max_tokens,
-                temperature=temperature,
+            resp = gemini_client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    temperature=temperature,
+                    max_output_tokens=max_tokens,
+                ),
             )
-            return resp.choices[0].message.content.strip()
+            return (resp.text or '').strip()
 
-        except RateLimitError:
-            if delay is None:
-                log.error('[Groq] Rate limit — 3 urinishdan keyin ham xato.')
-                raise
-            log.warning(f'[Groq] Rate limit. {delay}s kutilmoqda... ({attempt}/3)')
-            time.sleep(delay)
-
-        except APIStatusError as e:
-            log.error(f'[Groq] API xato: {e}')
+        except ClientError as e:
+            is_rate_limit = '429' in str(e) or 'RESOURCE_EXHAUSTED' in str(e)
+            if is_rate_limit and delay is not None:
+                log.warning(f'[Gemini] Rate limit. {delay}s kutilmoqda... ({attempt}/3)')
+                time.sleep(delay)
+                continue
+            log.error(f'[Gemini] Client xato: {e}')
             raise
+
+        except ServerError as e:
+            if delay is None:
+                log.error('[Gemini] Server xato — 3 urinishdan keyin ham.')
+                raise
+            log.warning(f'[Gemini] Server xato. {delay}s kutilmoqda... ({attempt}/3)')
+            time.sleep(delay)
 
 
 # ── Rule-based validator ──────────────────────────────────
