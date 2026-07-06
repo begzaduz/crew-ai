@@ -12,9 +12,10 @@ logging.basicConfig(
 )
 
 # ── Telegram ──────────────────────────────────────────────
-TOKEN        = os.getenv('TOKEN', '')
-CHANNEL      = os.getenv('CHANNEL', '@Inglizfutbol')
-ADMIN_IDS    = [int(x) for x in os.getenv('ADMIN_IDS', '').split(',') if x.strip()]
+TOKEN           = os.getenv('TOKEN', '')
+CHANNEL         = os.getenv('CHANNEL', '@Inglizfutbol')
+ADMIN_IDS       = [int(x) for x in os.getenv('ADMIN_IDS', '').split(',') if x.strip()]
+WEBHOOK_SECRET  = os.getenv('WEBHOOK_SECRET', '')
 
 # ── Gemini ──────────────────────────────────────────────
 GEMINI_KEY   = os.getenv('GEMINI_KEY', '')
@@ -37,3 +38,5 @@ if not GEMINI_KEY:
     raise RuntimeError('GEMINI_KEY .env da topilmadi!')
 if not ADMIN_IDS:
     raise RuntimeError('ADMIN_IDS .env da topilmadi! (Telegram ID raqamlar, vergul bilan)')
+if not WEBHOOK_SECRET:
+    raise RuntimeError('WEBHOOK_SECRET .env da topilmadi! (o\'zingiz tasodifiy uzun matn o\'ylab toping)')
