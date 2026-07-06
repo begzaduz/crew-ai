@@ -22,10 +22,26 @@ HIGH_KEYWORDS = [
     'brentford', 'fulham', 'crystal palace', 'million', 'contract', 'deal', 'fee',
 ]
 
-LOW_KEYWORDS = [
+# Premier League klublari — kamida bittasi (yoki "premier league" so'zi) matnda
+# bo'lishi SHART, aks holda maqola avtomatik rad etiladi.
+PL_SIGNAL_KEYWORDS = [
+    'premier league', 'epl', 'arsenal', 'chelsea', 'liverpool',
+    'manchester united', 'manchester city', 'man utd', 'man city', 'man united',
+    'tottenham', 'spurs', 'newcastle', 'aston villa', 'west ham', 'brighton',
+    'everton', 'wolves', 'wolverhampton', 'bournemouth', 'brentford', 'fulham',
+    'crystal palace', 'nottingham forest', 'leeds', 'sunderland', 'burnley',
+    'ipswich', 'southampton',
+]
+
+# Hard blacklist — bu so'zlardan biri topilsa, maqola qanchalik "PL"ga o'xshab
+# ko'rinmasin, darhol -999 ball bilan rad etiladi.
+BLACKLIST_PHRASES = [
     'nba', 'nfl', 'cricket', 'rugby', 'golf', 'tennis', 'formula 1', 'nascar',
     'baseball', 'hockey', 'basketball', 'ufc', 'boxing', 'bundesliga',
-    'serie a', 'ligue 1', 'la liga', 'mls', 'eredivisie',
+    'serie a', 'ligue 1', 'la liga', 'mls', 'eredivisie', 'saudi pro league',
+    'championship play-off', 'efl championship', 'league one', 'league two',
+    'scottish premiership', "women's super league", ' wsl ',
+    'under-21', 'under-23', 'u21', 'u23', 'youth team', 'academy fixture',
 ]
 
 # Rasm URL da bo'lmasligi kerak bo'lgan so'zlar
@@ -37,8 +53,17 @@ IMAGE_BLACKLIST = [
 
 def score_article(title: str, desc: str) -> int:
     text = f'{title} {desc}'.lower()
+
+    # 1) Hard blacklist — boshqa sport/liga so'zi topilsa, darhol rad
+    if any(bad in text for bad in BLACKLIST_PHRASES):
+        return -999
+
+    # 2) Premier League signali SHART — bo'lmasa, generic so'zlar (transfer,
+    #    million, contract kabi) ko'p bo'lsa ham maqola rad etiladi
+    if not any(sig in text for sig in PL_SIGNAL_KEYWORDS):
+        return -999
+
     score = sum(10 for kw in HIGH_KEYWORDS if kw in text)
-    score -= sum(20 for kw in LOW_KEYWORDS if kw in text)
     if any(w in text for w in ('breaking', 'official', 'confirmed')):
         score += 15
     return score
