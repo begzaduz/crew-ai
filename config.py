@@ -25,7 +25,7 @@ GEMINI_MODEL = 'gemini-2.5-flash'
 PORT         = int(os.getenv('PORT', 8080))
 
 # ── Bot davri ─────────────────────────────────────────────
-INTERVAL     = 30 * 60  # 30 daqiqa
+INTERVAL     = 4 * 60 * 60  # 4 soat
 ARTICLE_MAX_AGE_HOURS = 48
 
 # ── Scoring ───────────────────────────────────────────────
