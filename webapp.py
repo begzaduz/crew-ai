@@ -15,8 +15,16 @@ html, body {
   color: #ffffff;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   -webkit-tap-highlight-color: transparent;
+  height: 100%;
+  overflow-x: hidden;
 }
-#app { padding-bottom: 76px; min-height: 100vh; }
+#app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: -webkit-fill-available;
+}
+#main-content { flex: 1 1 auto; overflow-y: auto; padding-bottom: 12px; }
 header {
   padding: 14px 18px 10px;
   display: flex;
@@ -45,8 +53,8 @@ header .logo .bold { font-weight: 700; color: #ffffff; }
   background-size: cover;
   background-position: center;
 }
-.news-card.hero { height: 62vh; min-height: 420px; }
-.news-card.small { height: 38vh; min-height: 250px; }
+.news-card.hero { height: calc(var(--vh, 1vh) * 62); min-height: 380px; max-height: 560px; }
+.news-card.small { height: calc(var(--vh, 1vh) * 38); min-height: 230px; max-height: 340px; }
 
 /* pastdan yuqoriga gradient — matn o'qiladi, rasm ko'p qismi ochiq qoladi */
 .news-card::after {
@@ -164,7 +172,7 @@ header .logo .bold { font-weight: 700; color: #ffffff; }
 .table-row .stat { font-size: 13px; color: #8a93ac; text-align: right; }
 .table-row .pts { font-size: 13.5px; font-weight: 600; color: #ffffff; text-align: right; }
 nav {
-  position: fixed; bottom: 0; left: 0; right: 0;
+  flex: 0 0 auto;
   display: flex; background: #0e1830; border-top: 0.5px solid #223154;
   padding: 8px 0 max(8px, env(safe-area-inset-bottom));
 }
@@ -182,6 +190,8 @@ nav button.active { color: #f2c14e; }
 <div class="logo"><span class="light">ingliz</span><span class="bold">futboli</span></div>
 </header>
 
+<div id="main-content">
+
 <div id="tab-news" class="tab active">
 <div id="news-content"><div class="loading">Yuklanmoqda...</div></div>
 </div>
@@ -194,6 +204,7 @@ nav button.active { color: #f2c14e; }
 <div id="tab-table" class="tab">
 <div id="table-content"><div class="loading">Yuklanmoqda...</div></div>
 </div>
+
 </div>
 
 <nav>
@@ -210,10 +221,19 @@ nav button.active { color: #f2c14e; }
 <span>Jadval</span>
 </button>
 </nav>
+</div>
 
 <script>
 const tg = window.Telegram ? window.Telegram.WebApp : null;
 if (tg) { tg.ready(); tg.expand(); }
+
+function setRealVh() {
+  const h = (tg && tg.viewportHeight) ? tg.viewportHeight : window.innerHeight;
+  document.documentElement.style.setProperty('--vh', (h * 0.01) + 'px');
+}
+setRealVh();
+window.addEventListener('resize', setRealVh);
+if (tg && tg.onEvent) { tg.onEvent('viewportChanged', setRealVh); }
 
 const loaded = { news: false, matches: false, table: false };
 let newsData = [];
@@ -274,7 +294,7 @@ function newsCardHtml(post, idx, variant) {
   const badge = variant === 'hero' ? '<span class="badge">ASOSIY YANGILIK</span>' : '';
   const tag = variant === 'hero' ? 'Manba' : 'Yangilik';
   return `
-    <div class="news-card ${variant}" style="${bg}">
+    <div class="news-card ${variant}" style="${bg}" onclick="toggleDesc(event,${idx})">
       ${badge}
       <div class="card-body">
         <p class="card-title">${escapeHtml(s.title)}</p>
