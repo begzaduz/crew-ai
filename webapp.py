@@ -37,37 +37,35 @@ HTML_PAGE = """<!DOCTYPE html>
   .tab { display: none; }
   .tab.active { display: block; }
 
-  /* ---- Yangiliklar feed: ixcham ro'yxat uslubi ---- */
+  /* ---- Yangiliklar feed: ramkali kartalar, rasm chap tarafga tekis ---- */
   .feed {
     display: flex;
     flex-direction: column;
-    padding: 4px 14px 12px;
+    gap: 12px;
+    padding: 12px 14px;
   }
 
   .news-item {
     display: flex;
-    align-items: flex-start;
-    gap: 14px;
-    padding: 14px 0;
-    border-bottom: 0.5px solid #223154;
+    align-items: stretch;
+    background: #162542;
+    border: 0.5px solid #223154;
+    border-radius: 14px;
+    overflow: hidden;
     cursor: pointer;
   }
-  .news-item:last-child {
-    border-bottom: none;
-  }
   .news-item:active {
-    opacity: 0.75;
+    opacity: 0.8;
   }
 
   .news-thumb {
     flex-shrink: 0;
-    width: 84px;
-    height: 84px;
-    border-radius: 14px;
+    align-self: stretch;
+    width: 100px;
     background: #243357 center / cover no-repeat;
   }
   .news-thumb.no-image {
-    background: linear-gradient(135deg, #243357 0%, #162542 100%);
+    background: linear-gradient(135deg, #243357 0%, #0e1830 100%);
   }
 
   .news-content {
@@ -77,6 +75,7 @@ HTML_PAGE = """<!DOCTYPE html>
     flex-direction: column;
     justify-content: center;
     gap: 8px;
+    padding: 14px;
   }
 
   .news-title {
@@ -94,8 +93,11 @@ HTML_PAGE = """<!DOCTYPE html>
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 12.5px;
-    color: #8a93ac;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #f2c14e;
   }
   .news-meta .badge {
     width: 20px;
