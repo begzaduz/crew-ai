@@ -5,13 +5,16 @@ import hmac
 import logging
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from urllib.parse import urlparse, parse_qs
 
 import requests
 
 from config import TOKEN, CHANNEL, ADMIN_IDS, PORT, INTERVAL, WEBHOOK_SECRET
-from database import is_processed, mark_processed, clear_cache, get_stats, init_db
+from database import is_processed, mark_processed, clear_cache, get_stats, init_db, save_post, get_recent_posts
 from feeds import fetch_news, fetch_og_image
 from agents import generate_post
+from api_football import fetch_standings, fetch_matches_by_date
+from webapp import HTML_PAGE
 
 log = logging.getLogger(__name__)
 
@@ -152,6 +155,7 @@ def auto_news_post() -> bool:
             result = tg_channel(post, image_url=image_url)
             if result.get('ok'):
                 mark_processed(article['url'], article['title'], article['score'])
+                save_post(article['url'], article['title'], post, image_url)
                 log.info(f'[Auto] ✅ Yuborildi: {article["title"][:60]}')
                 return True
             else:
@@ -231,7 +235,9 @@ def handle_update(update: dict) -> None:
 
         elif text == 'Yuborish' and chat_id in pending:
             p = pending.pop(chat_id)
-            tg_channel(p['text'], image_url=p.get('image_url'))
+            result = tg_channel(p['text'], image_url=p.get('image_url'))
+            if result.get('ok'):
+                save_post(None, p['text'][:80], p['text'], p.get('image_url'))
             tg_send(chat_id, '✅ Kanalga yuborildi!',
                     reply_markup={'remove_keyboard': True})
 
@@ -263,8 +269,16 @@ def handle_update(update: dict) -> None:
         log.error(f'[Bot] handle_update kutilmagan xato: {e}')
 
 
-# ── Webhook HTTP handler ──────────────────────────────────
+# ── Webhook + Mini App HTTP handler ───────────────────────
 class WebhookHandler(BaseHTTPRequestHandler):
+    def _json(self, data, status: int = 200) -> None:
+        body = json.dumps(data, default=str, ensure_ascii=False).encode('utf-8')
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_POST(self):
         incoming_secret = self.headers.get('X-Telegram-Bot-Api-Secret-Token', '')
         if not hmac.compare_digest(incoming_secret, WEBHOOK_SECRET):
@@ -286,6 +300,48 @@ class WebhookHandler(BaseHTTPRequestHandler):
             log.error(f'[Webhook] {e}')
 
     def do_GET(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        if path == '/api/posts':
+            try:
+                posts = get_recent_posts(50)
+                self._json(posts)
+            except Exception as e:
+                log.error(f'[API] /api/posts xato: {e}')
+                self._json([], status=500)
+            return
+
+        if path == '/api/standings':
+            try:
+                rows = fetch_standings()
+                self._json(rows)
+            except Exception as e:
+                log.error(f'[API] /api/standings xato: {e}')
+                self._json(None, status=500)
+            return
+
+        if path == '/api/matches':
+            qs = parse_qs(parsed.query)
+            date_str = (qs.get('date') or [''])[0]
+            if not date_str:
+                self._json({'error': 'date kerak (YYYY-MM-DD)'}, status=400)
+                return
+            try:
+                matches = fetch_matches_by_date(date_str)
+                self._json(matches)
+            except Exception as e:
+                log.error(f'[API] /api/matches xato: {e}')
+                self._json(None, status=500)
+            return
+
+        if path in ('/', '/webapp', '/webapp/'):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(HTML_PAGE.encode('utf-8'))
+            return
+
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b'Ingliz Futboli Bot v4.0')
