@@ -8,6 +8,9 @@ HTML_PAGE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>ingliz futboli</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
@@ -29,8 +32,8 @@ HTML_PAGE = """<!DOCTYPE html>
     background: #0e1830;
     z-index: 10;
   }
-  header .logo { font-size: 19px; }
-  header .logo .light { font-weight: 400; color: #c7d1e8; }
+  header .logo { font-size: 22px; font-family: 'Poppins', sans-serif; }
+  header .logo .light { font-weight: 300; color: #ffffff; }
   header .logo .bold { font-weight: 700; color: #ffffff; }
 
   .tab { display: none; }
@@ -77,10 +80,10 @@ HTML_PAGE = """<!DOCTYPE html>
     display: flex; align-items: center; justify-content: center;
   }
 
-  .post-body { position: relative; z-index: 2; padding: 18px; }
+  .post-body { position: relative; z-index: 2; padding: 16px; }
 
   .post-tags {
-    display: flex; gap: 6px; margin-bottom: 10px;
+    display: flex; gap: 6px; margin-bottom: 8px;
   }
   .post-tag {
     font-size: 11px; font-weight: 600; letter-spacing: 0.03em;
@@ -89,12 +92,12 @@ HTML_PAGE = """<!DOCTYPE html>
   }
 
   .post-title {
-    font-size: 19px; font-weight: 700; line-height: 1.3;
-    color: #ffffff; margin-bottom: 8px;
+    font-size: 18px; font-weight: 700; line-height: 1.22;
+    color: #ffffff; margin-bottom: 6px;
   }
 
   .post-snippet {
-    font-size: 14px; line-height: 1.55; color: #d5dbea;
+    font-size: 13.5px; line-height: 1.45; color: #d5dbea;
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
     overflow: hidden; white-space: pre-line;
   }
@@ -103,13 +106,13 @@ HTML_PAGE = """<!DOCTYPE html>
   }
 
   .post-toggle {
-    display: inline-block; color: #f2c14e; font-weight: 600; font-size: 14px;
-    margin-left: 4px; margin-top: 4px; cursor: pointer;
+    display: inline-block; color: #f2c14e; font-weight: 600; font-size: 13px;
+    margin-left: 4px; margin-top: 2px; cursor: pointer;
   }
 
   .post-footer {
     display: flex; align-items: center; gap: 10px;
-    margin-top: 12px; font-size: 12px; color: #a9b2cc;
+    margin-top: 8px; font-size: 11.5px; color: #a9b2cc;
   }
 
   .empty, .loading { text-align: center; padding: 40px 20px; color: #5f6b8f; font-size: 14px; }
