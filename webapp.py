@@ -37,153 +37,72 @@ HTML_PAGE = """<!DOCTYPE html>
   .tab { display: none; }
   .tab.active { display: block; }
 
-  /* ---- Yangiliklar feed: Reels/TikTok Premium uslubi ---- */
-  .feed { 
-    display: flex; 
-    flex-direction: column; 
-    gap: 16px; 
-    padding: 12px; 
-  }
-  
-  .post-card {
-    position: relative;
-    border-radius: 20px;
-    overflow: hidden;
-    /* Ekran balandligiga mos ravishda uzun va kontentli ko'rinish */
-    min-height: calc(100vh - 165px); 
+  /* ---- Yangiliklar feed: ixcham ro'yxat uslubi ---- */
+  .feed {
     display: flex;
     flex-direction: column;
-    justify-content: flex-end;
-    background: #162542 center / cover no-repeat;
-    transition: all 0.3s ease-in-out;
-  }
-  
-  .post-card.no-image { 
-    min-height: 240px; 
-    background: linear-gradient(135deg, #162542 0%, #0e1830 100%);
-  }
-  
-  /* Rasm ustidan tushadigan to'q gradient overlay */
-  .post-card::before {
-    content: "";
-    position: absolute; 
-    inset: 0;
-    background: linear-gradient(180deg, rgba(14,24,48,0) 30%, rgba(14,24,48,0.5) 60%, rgba(14,24,48,0.95) 100%);
-    pointer-events: none;
-    z-index: 1;
-    transition: background 0.3s ease;
-  }
-  
-  /* Matn kengaygandagi gradient holati */
-  .post-card.is-expanded::before {
-    background: linear-gradient(180deg, rgba(14,24,48,0.3) 0%, rgba(14,24,48,0.7) 40%, rgba(14,24,48,0.98) 100%);
+    padding: 4px 14px 12px;
   }
 
-  /* Share tugmasi uchun ixcham joylashuv */
-  .post-actions {
-    position: absolute;
-    top: 16px; 
-    right: 16px;
-    z-index: 3;
-  }
-  .post-actions button {
-    width: 36px; 
-    height: 36px; 
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.12); 
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 0.5px solid rgba(255, 255, 255, 0.1); 
-    color: #fff; 
-    font-size: 15px;
-    display: flex; 
-    align-items: center; 
-    justify-content: center;
+  .news-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px 0;
+    border-bottom: 0.5px solid #223154;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
   }
-  
-  /* Kontent qismi */
-  .post-body { 
-    position: relative; 
-    z-index: 2; 
-    padding: 20px; 
+  .news-item:last-child {
+    border-bottom: none;
+  }
+  .news-item:active {
+    opacity: 0.75;
+  }
+
+  .news-thumb {
+    flex-shrink: 0;
+    width: 84px;
+    height: 84px;
+    border-radius: 14px;
+    background: #243357 center / cover no-repeat;
+  }
+  .news-thumb.no-image {
+    background: linear-gradient(135deg, #243357 0%, #162542 100%);
+  }
+
+  .news-content {
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
+    justify-content: center;
+    gap: 8px;
   }
-  
-  .post-tags {
-    display: flex; 
-    gap: 6px; 
-    margin-bottom: 10px;
-  }
-  .post-tag {
-    font-size: 11px; 
-    font-weight: 700; 
-    letter-spacing: 0.04em;
-    color: #0e1830; 
-    background: #f2c14e;
-    padding: 3px 10px; 
-    border-radius: 6px;
-    text-transform: uppercase;
-  }
-  
-  .post-title {
-    font-size: 22px; 
-    font-weight: 800; 
-    line-height: 1.25;
-    color: #ffffff; 
-    margin-bottom: 8px;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.4);
-  }
-  
-  /* Snippet matni: ixcham va joyni to'liq egallamaydi */
-  .post-snippet {
-    font-size: 14px; 
-    line-height: 1.5; 
-    color: #d5dbea;
-    display: -webkit-box; 
-    -webkit-line-clamp: 2; 
+
+  .news-title {
+    font-size: 15.5px;
+    font-weight: 700;
+    line-height: 1.3;
+    color: #ffffff;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
-    overflow: hidden; 
-    white-space: pre-line;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    overflow: hidden;
   }
-  
-  .post-snippet.expanded {
-    -webkit-line-clamp: unset; 
-    overflow: visible;
+
+  .news-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    color: #8a93ac;
   }
-  
-  /* Bir qatorda chiroyli turuvchi ko'proq/kamroq tugmasi */
-  .post-toggle {
-    display: inline-block; 
-    color: #f2c14e; 
-    font-weight: 700; 
-    font-size: 13.5px;
-    margin-top: 6px; 
-    cursor: pointer;
-    transition: opacity 0.2s;
-  }
-  .post-toggle:active {
-    opacity: 0.7;
-  }
-  
-  .post-footer {
-    display: flex; 
-    align-items: center; 
-    gap: 12px;
-    margin-top: 12px; 
-    font-size: 12px; 
-    color: #a9b2cc;
-    border-top: 0.5px solid rgba(255, 255, 255, 0.1);
-    padding-top: 10px;
-  }
-  
-  .post-footer .source-link {
-    color: #f2c14e;
-    text-decoration: none;
-    font-weight: 600;
+  .news-meta .badge {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #243357 center / cover no-repeat;
+    flex-shrink: 0;
   }
 
   /* ---- Boshqa sahifa elementlari stabil saqlandi ---- */
@@ -278,6 +197,12 @@ HTML_PAGE = """<!DOCTYPE html>
     return div.innerHTML;
   }
 
+  function escapeAttr(str) {
+    return (str || '').replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
   function switchTab(name) {
     document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
@@ -302,29 +227,6 @@ HTML_PAGE = """<!DOCTYPE html>
     return { title, rest };
   }
 
-  function togglePost(i) {
-    const card = document.getElementById('card-' + i);
-    const snippet = document.getElementById('snippet-' + i);
-    const toggle = document.getElementById('toggle-' + i);
-    const expanded = snippet.classList.toggle('expanded');
-    card.classList.toggle('is-expanded', expanded);
-    toggle.innerText = expanded ? 'Kamroq bosish' : '... Ko\\'proq';
-  }
-
-  function sharePost(i) {
-    const p = currentPosts[i];
-    if (!p) return;
-    const s = splitTitle(p.post_text || p.title || '');
-    const shareUrl = p.url || 'https://t.me/inglizfutboli_bot';
-    if (tg && tg.openTelegramLink) {
-      tg.openTelegramLink('https://t.me/share/url?url=' + encodeURIComponent(shareUrl) + '&text=' + encodeURIComponent(s.title));
-    } else if (navigator.share) {
-      navigator.share({ title: s.title, url: shareUrl });
-    } else if (tg && tg.openLink) {
-      tg.openLink(shareUrl);
-    }
-  }
-
   function openSourceFor(i) {
     const p = currentPosts[i];
     if (!p || !p.url) return;
@@ -332,23 +234,17 @@ HTML_PAGE = """<!DOCTYPE html>
     else window.open(p.url, '_blank');
   }
 
-  function renderPost(p, i, big) {
+  function renderPost(p, i) {
     const s = splitTitle(p.post_text || p.title || '');
-    const bgStyle = p.image_url ? `style="background-image:url('${p.image_url}')"` : '';
+    const bgStyle = p.image_url ? `style="background-image:url('${escapeAttr(p.image_url)}')"` : '';
     const noImageClass = p.image_url ? '' : ' no-image';
     return `
-      <div class="post-card${noImageClass}" id="card-${i}" ${bgStyle}>
-        <div class="post-actions">
-          <button onclick="sharePost(${i}); event.stopPropagation();">↗</button>
-        </div>
-        <div class="post-body">
-          <div class="post-tags"><span class="post-tag">${big ? 'ASOSIY YANGILIK' : 'YANGILIK'}</span></div>
-          <p class="post-title">${escapeHtml(s.title)}</p>
-          <p class="post-snippet" id="snippet-${i}">${escapeHtml(s.rest || s.title)}</p>
-          ${s.rest ? `<span class="post-toggle" id="toggle-${i}" onclick="togglePost(${i})">... Ko'proq</span>` : ''}
-          <div class="post-footer">
-            <span>📅 ${formatDate(p.published_at)}</span>
-            ${p.url ? `<span class="source-link" onclick="openSourceFor(${i}); event.stopPropagation();">Manba 🔗</span>` : ''}
+      <div class="news-item" onclick="openSourceFor(${i})">
+        <div class="news-thumb${noImageClass}" ${bgStyle}></div>
+        <div class="news-content">
+          <p class="news-title">${escapeHtml(s.title)}</p>
+          <div class="news-meta">
+            <span>${formatDate(p.published_at)}</span>
           </div>
         </div>
       </div>
@@ -367,7 +263,7 @@ HTML_PAGE = """<!DOCTYPE html>
         return;
       }
       let html = '<div class="feed">';
-      html += posts.map((p, i) => renderPost(p, i, i === 0)).join('');
+      html += posts.map((p, i) => renderPost(p, i)).join('');
       html += '</div>';
       el.innerHTML = html;
     } catch (e) {
