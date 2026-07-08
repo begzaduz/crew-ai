@@ -36,61 +36,77 @@ HTML_PAGE = """<!DOCTYPE html>
   .tab { display: none; }
   .tab.active { display: block; }
 
-  .featured {
-    margin: 14px 14px 0;
-    position: relative;
-    height: 170px;
-    border-radius: 14px;
-    background: linear-gradient(180deg, #24427c 0%, #1d3a6e 100%);
-    display: flex;
-    align-items: flex-end;
-    padding: 14px;
-    overflow: hidden;
-  }
-  .featured .badge {
-    position: absolute;
-    top: 12px;
-    left: 14px;
-    font-size: 11px;
-    letter-spacing: 0.06em;
-    color: #f2c14e;
-    font-weight: 600;
-  }
-  .featured .headline {
-    font-size: 17px;
-    font-weight: 600;
-    color: #ffffff;
-    line-height: 1.35;
-  }
-  .featured-meta {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 8px 16px 0;
-    font-size: 12px;
-  }
-  .featured-meta .league { color: #f2c14e; letter-spacing: 0.03em; }
-  .featured-meta .dot { color: #425079; }
-  .featured-meta .time { color: #8a93ac; }
+  /* ---- Yangiliklar feed: rasm-fon kartochkalar ---- */
+  .feed { display: flex; flex-direction: column; gap: 14px; padding: 14px; }
 
-  .news-list { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
-  .news-card {
-    background: #162542;
-    border: 0.5px solid #223154;
-    border-radius: 12px;
-    padding: 10px;
+  .post-card {
+    position: relative;
+    border-radius: 16px;
+    overflow: hidden;
+    min-height: 420px;
     display: flex;
-    gap: 10px;
+    flex-direction: column;
+    justify-content: flex-end;
+    background: #162542 center / cover no-repeat;
   }
-  .news-card .thumb {
-    width: 64px; height: 64px; border-radius: 8px;
-    background: #243357; flex-shrink: 0;
-    background-size: cover; background-position: center;
+  .post-card.no-image { min-height: 260px; }
+  .post-card::before {
+    content: "";
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(14,24,48,0) 35%, rgba(14,24,48,0.55) 65%, rgba(14,24,48,0.96) 100%);
+    pointer-events: none;
+  }
+
+  .post-actions {
+    position: absolute;
+    top: 14px; right: 12px;
+    display: flex; flex-direction: column; gap: 10px;
+    z-index: 3;
+  }
+  .post-actions button {
+    width: 38px; height: 38px; border-radius: 50%;
+    background: rgba(14,24,48,0.55); backdrop-filter: blur(4px);
+    border: none; color: #fff; font-size: 17px;
     display: flex; align-items: center; justify-content: center;
   }
-  .news-card .thumb i { font-size: 20px; color: #4a5b8a; }
-  .news-card .title { font-size: 14px; font-weight: 600; color: #ffffff; line-height: 1.3; margin-bottom: 6px; }
-  .news-card .meta { font-size: 11.5px; color: #8a93ac; }
+  .post-actions button.liked { color: #e2515a; }
+
+  .post-body { position: relative; z-index: 2; padding: 18px; }
+  .post-card.no-image .post-body { padding-top: 18px; }
+
+  .post-tags {
+    display: flex; gap: 6px; margin-bottom: 10px;
+  }
+  .post-tag {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.03em;
+    color: #4a3400; background: #f2c14e;
+    padding: 4px 10px; border-radius: 20px;
+  }
+
+  .post-title {
+    font-size: 19px; font-weight: 700; line-height: 1.3;
+    color: #ffffff; margin-bottom: 8px;
+  }
+
+  .post-snippet {
+    font-size: 14px; line-height: 1.55; color: #d5dbea;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; white-space: pre-line;
+  }
+  .post-snippet.expanded {
+    -webkit-line-clamp: unset; overflow: visible;
+  }
+
+  .post-toggle {
+    display: inline; color: #f2c14e; font-weight: 600; font-size: 14px;
+    margin-left: 4px; cursor: pointer;
+  }
+
+  .post-footer {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 12px; font-size: 12px; color: #a9b2cc;
+  }
+  .post-footer .dot { color: #425079; }
 
   .empty, .loading { text-align: center; padding: 40px 20px; color: #5f6b8f; font-size: 14px; }
 
@@ -141,33 +157,6 @@ HTML_PAGE = """<!DOCTYPE html>
     padding: 4px 0; color: #5f6b8f; font-size: 10.5px;
   }
   nav button.active { color: #f2c14e; }
-
-  .news-card, .featured { cursor: pointer; }
-  .modal {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
-    display: none; align-items: flex-end; z-index: 100;
-  }
-  .modal.active { display: flex; }
-  .modal-content {
-    background: #0e1830; width: 100%; max-height: 88vh; overflow-y: auto;
-    border-radius: 16px 16px 0 0; padding: 18px; position: relative;
-  }
-  .modal-close {
-    position: absolute; top: 14px; right: 14px; background: #223154;
-    color: #fff; border: none; width: 30px; height: 30px; border-radius: 50%;
-    font-size: 15px;
-  }
-  .modal-image {
-    width: 100%; height: 180px; border-radius: 12px; background-size: cover;
-    background-position: center; background-color: #243357; margin-bottom: 14px;
-  }
-  .modal-content h2 { font-size: 18px; margin-bottom: 8px; padding-right: 30px; }
-  .modal-content .meta { font-size: 12px; color: #8a93ac; margin-bottom: 14px; }
-  .modal-content .text { font-size: 14px; line-height: 1.6; color: #d5dbea; white-space: pre-line; margin-bottom: 16px; }
-  .modal-source-btn {
-    width: 100%; background: #f2c14e; color: #4a3400; font-weight: 600;
-    border: none; padding: 12px; border-radius: 10px; font-size: 14px;
-  }
 </style>
 </head>
 <body>
@@ -188,17 +177,6 @@ HTML_PAGE = """<!DOCTYPE html>
 
   <div id="tab-table" class="tab">
     <div id="table-content"><div class="loading">Yuklanmoqda...</div></div>
-  </div>
-</div>
-
-<div id="post-modal" class="modal" onclick="if(event.target===this) closeModal()">
-  <div class="modal-content">
-    <button class="modal-close" onclick="closeModal()">&#10005;</button>
-    <div class="modal-image" id="modal-image"></div>
-    <h2 id="modal-title"></h2>
-    <p class="meta" id="modal-meta"></p>
-    <p class="text" id="modal-text"></p>
-    <button class="modal-source-btn" id="modal-source-btn" onclick="openSource()">Manbani ko'rish</button>
   </div>
 </div>
 
@@ -223,6 +201,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
   const loaded = { news: false, matches: false, table: false };
   let currentPosts = [];
+  const likedPosts = new Set();
 
   function escapeHtml(str) {
     const div = document.createElement('div');
@@ -254,29 +233,68 @@ HTML_PAGE = """<!DOCTYPE html>
     return { title, rest };
   }
 
-  function openPost(i) {
+  function togglePost(i) {
+    const snippet = document.getElementById('snippet-' + i);
+    const toggle = document.getElementById('toggle-' + i);
+    const expanded = snippet.classList.toggle('expanded');
+    toggle.innerText = expanded ? 'Kamroq' : 'Ko\\'proq';
+  }
+
+  function toggleLike(i, btn) {
+    if (likedPosts.has(i)) {
+      likedPosts.delete(i);
+      btn.classList.remove('liked');
+      btn.innerText = '🤍';
+    } else {
+      likedPosts.add(i);
+      btn.classList.add('liked');
+      btn.innerText = '❤️';
+    }
+  }
+
+  function sharePost(i) {
     const p = currentPosts[i];
     if (!p) return;
     const s = splitTitle(p.post_text || p.title || '');
-    document.getElementById('modal-title').innerText = s.title;
-    document.getElementById('modal-meta').innerText = formatDate(p.published_at);
-    document.getElementById('modal-text').innerText = s.rest || '';
-    document.getElementById('modal-image').style.backgroundImage = p.image_url ? `url('${p.image_url}')` : 'none';
-    const btn = document.getElementById('modal-source-btn');
-    btn.style.display = p.url ? 'block' : 'none';
-    document.getElementById('post-modal').dataset.url = p.url || '';
-    document.getElementById('post-modal').classList.add('active');
+    const shareUrl = p.url || 'https://t.me/inglizfutboli_bot';
+    if (tg && tg.openTelegramLink) {
+      tg.openTelegramLink('https://t.me/share/url?url=' + encodeURIComponent(shareUrl) + '&text=' + encodeURIComponent(s.title));
+    } else if (navigator.share) {
+      navigator.share({ title: s.title, url: shareUrl });
+    } else if (tg && tg.openLink) {
+      tg.openLink(shareUrl);
+    }
   }
 
-  function closeModal() {
-    document.getElementById('post-modal').classList.remove('active');
+  function openSourceFor(i) {
+    const p = currentPosts[i];
+    if (!p || !p.url) return;
+    if (tg && tg.openLink) tg.openLink(p.url);
+    else window.open(p.url, '_blank');
   }
 
-  function openSource() {
-    const url = document.getElementById('post-modal').dataset.url;
-    if (!url) return;
-    if (tg && tg.openLink) tg.openLink(url);
-    else window.open(url, '_blank');
+  function renderPost(p, i, big) {
+    const s = splitTitle(p.post_text || p.title || '');
+    const bgStyle = p.image_url ? `style="background-image:url('${p.image_url}')"` : '';
+    const noImageClass = p.image_url ? '' : ' no-image';
+    return `
+      <div class="post-card${noImageClass}" ${bgStyle}>
+        <div class="post-actions">
+          <button onclick="sharePost(${i})">↗</button>
+          <button id="like-${i}" onclick="toggleLike(${i}, this)">🤍</button>
+        </div>
+        <div class="post-body">
+          <div class="post-tags"><span class="post-tag">${big ? 'ASOSIY YANGILIK' : 'YANGILIK'}</span></div>
+          <p class="post-title">${escapeHtml(s.title)}</p>
+          <p class="post-snippet" id="snippet-${i}">${escapeHtml(s.rest || s.title)}</p>
+          ${s.rest ? `<span class="post-toggle" id="toggle-${i}" onclick="togglePost(${i})">Ko'proq</span>` : ''}
+          <div class="post-footer">
+            <span>${formatDate(p.published_at)}</span>
+            ${p.url ? `<span class="dot">&middot;</span><span class="post-toggle" onclick="openSourceFor(${i})">Manba</span>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   async function loadNews() {
@@ -290,31 +308,8 @@ HTML_PAGE = """<!DOCTYPE html>
         el.innerHTML = '<div class="empty">Hozircha yangiliklar yo\\'q.</div>';
         return;
       }
-      const [first, ...rest] = posts;
-      const f = splitTitle(first.post_text || first.title || '');
-      let html = `
-        <div class="featured" onclick="openPost(0)" style="${first.image_url ? `background-image:linear-gradient(180deg, rgba(14,24,48,0.1), rgba(14,24,48,0.85)), url('${first.image_url}'); background-size:cover; background-position:center;` : ''}">
-          <span class="badge">ASOSIY YANGILIK</span>
-          <p class="headline">${escapeHtml(f.title)}</p>
-        </div>
-        <div class="featured-meta">
-          <span class="league">YANGILIK</span><span class="dot">&middot;</span><span class="time">${formatDate(first.published_at)}</span>
-        </div>
-        <div class="news-list">
-      `;
-      html += rest.map((p, i) => {
-        const s = splitTitle(p.post_text || p.title || '');
-        const thumb = p.image_url ? `style="background-image:url('${p.image_url}')"` : '';
-        return `
-          <div class="news-card" onclick="openPost(${i + 1})">
-            <div class="thumb" ${thumb}>${p.image_url ? '' : '<i>⚽</i>'}</div>
-            <div style="flex:1; min-width:0;">
-              <p class="title">${escapeHtml(s.title)}</p>
-              <p class="meta">${formatDate(p.published_at)}</p>
-            </div>
-          </div>
-        `;
-      }).join('');
+      let html = '<div class="feed">';
+      html += posts.map((p, i) => renderPost(p, i, i === 0)).join('');
       html += '</div>';
       el.innerHTML = html;
     } catch (e) {
