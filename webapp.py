@@ -141,6 +141,33 @@ HTML_PAGE = """<!DOCTYPE html>
     padding: 4px 0; color: #5f6b8f; font-size: 10.5px;
   }
   nav button.active { color: #f2c14e; }
+
+  .news-card, .featured { cursor: pointer; }
+  .modal {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    display: none; align-items: flex-end; z-index: 100;
+  }
+  .modal.active { display: flex; }
+  .modal-content {
+    background: #0e1830; width: 100%; max-height: 88vh; overflow-y: auto;
+    border-radius: 16px 16px 0 0; padding: 18px; position: relative;
+  }
+  .modal-close {
+    position: absolute; top: 14px; right: 14px; background: #223154;
+    color: #fff; border: none; width: 30px; height: 30px; border-radius: 50%;
+    font-size: 15px;
+  }
+  .modal-image {
+    width: 100%; height: 180px; border-radius: 12px; background-size: cover;
+    background-position: center; background-color: #243357; margin-bottom: 14px;
+  }
+  .modal-content h2 { font-size: 18px; margin-bottom: 8px; padding-right: 30px; }
+  .modal-content .meta { font-size: 12px; color: #8a93ac; margin-bottom: 14px; }
+  .modal-content .text { font-size: 14px; line-height: 1.6; color: #d5dbea; white-space: pre-line; margin-bottom: 16px; }
+  .modal-source-btn {
+    width: 100%; background: #f2c14e; color: #4a3400; font-weight: 600;
+    border: none; padding: 12px; border-radius: 10px; font-size: 14px;
+  }
 </style>
 </head>
 <body>
@@ -164,6 +191,17 @@ HTML_PAGE = """<!DOCTYPE html>
   </div>
 </div>
 
+<div id="post-modal" class="modal" onclick="if(event.target===this) closeModal()">
+  <div class="modal-content">
+    <button class="modal-close" onclick="closeModal()">&#10005;</button>
+    <div class="modal-image" id="modal-image"></div>
+    <h2 id="modal-title"></h2>
+    <p class="meta" id="modal-meta"></p>
+    <p class="text" id="modal-text"></p>
+    <button class="modal-source-btn" id="modal-source-btn" onclick="openSource()">Manbani ko'rish</button>
+  </div>
+</div>
+
 <nav>
   <button class="active" data-tab="news" onclick="switchTab('news')">
     <span style="font-size:20px;">📰</span>
@@ -184,6 +222,7 @@ HTML_PAGE = """<!DOCTYPE html>
   if (tg) { tg.ready(); tg.expand(); }
 
   const loaded = { news: false, matches: false, table: false };
+  let currentPosts = [];
 
   function escapeHtml(str) {
     const div = document.createElement('div');
@@ -215,12 +254,38 @@ HTML_PAGE = """<!DOCTYPE html>
     return { title, rest };
   }
 
+  function openPost(i) {
+    const p = currentPosts[i];
+    if (!p) return;
+    const s = splitTitle(p.post_text || p.title || '');
+    document.getElementById('modal-title').innerText = s.title;
+    document.getElementById('modal-meta').innerText = formatDate(p.published_at);
+    document.getElementById('modal-text').innerText = s.rest || '';
+    document.getElementById('modal-image').style.backgroundImage = p.image_url ? `url('${p.image_url}')` : 'none';
+    const btn = document.getElementById('modal-source-btn');
+    btn.style.display = p.url ? 'block' : 'none';
+    document.getElementById('post-modal').dataset.url = p.url || '';
+    document.getElementById('post-modal').classList.add('active');
+  }
+
+  function closeModal() {
+    document.getElementById('post-modal').classList.remove('active');
+  }
+
+  function openSource() {
+    const url = document.getElementById('post-modal').dataset.url;
+    if (!url) return;
+    if (tg && tg.openLink) tg.openLink(url);
+    else window.open(url, '_blank');
+  }
+
   async function loadNews() {
     loaded.news = true;
     const el = document.getElementById('news-content');
     try {
       const res = await fetch('/api/posts');
       const posts = await res.json();
+      currentPosts = posts;
       if (!posts.length) {
         el.innerHTML = '<div class="empty">Hozircha yangiliklar yo\\'q.</div>';
         return;
@@ -228,7 +293,7 @@ HTML_PAGE = """<!DOCTYPE html>
       const [first, ...rest] = posts;
       const f = splitTitle(first.post_text || first.title || '');
       let html = `
-        <div class="featured" style="${first.image_url ? `background-image:linear-gradient(180deg, rgba(14,24,48,0.1), rgba(14,24,48,0.85)), url('${first.image_url}'); background-size:cover; background-position:center;` : ''}">
+        <div class="featured" onclick="openPost(0)" style="${first.image_url ? `background-image:linear-gradient(180deg, rgba(14,24,48,0.1), rgba(14,24,48,0.85)), url('${first.image_url}'); background-size:cover; background-position:center;` : ''}">
           <span class="badge">ASOSIY YANGILIK</span>
           <p class="headline">${escapeHtml(f.title)}</p>
         </div>
@@ -237,11 +302,11 @@ HTML_PAGE = """<!DOCTYPE html>
         </div>
         <div class="news-list">
       `;
-      html += rest.map(p => {
+      html += rest.map((p, i) => {
         const s = splitTitle(p.post_text || p.title || '');
         const thumb = p.image_url ? `style="background-image:url('${p.image_url}')"` : '';
         return `
-          <div class="news-card">
+          <div class="news-card" onclick="openPost(${i + 1})">
             <div class="thumb" ${thumb}>${p.image_url ? '' : '<i>⚽</i>'}</div>
             <div style="flex:1; min-width:0;">
               <p class="title">${escapeHtml(s.title)}</p>
