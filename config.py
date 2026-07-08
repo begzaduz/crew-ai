@@ -19,7 +19,7 @@ WEBHOOK_SECRET  = os.getenv('WEBHOOK_SECRET', '')
 
 # ── Gemini ──────────────────────────────────────────────
 GEMINI_KEY   = os.getenv('GEMINI_KEY', '')
-GEMINI_MODEL = 'gemini-2.5-flash'
+GEMINI_MODEL = 'gemini-2.5-flash-lite'
 
 # ── Football-data.org (Mini App: O'yinlar + Jadval bo'limlari) ─
 # Bepul API key: https://www.football-data.org/client/register
