@@ -21,6 +21,12 @@ WEBHOOK_SECRET  = os.getenv('WEBHOOK_SECRET', '')
 GEMINI_KEY   = os.getenv('GEMINI_KEY', '')
 GEMINI_MODEL = 'gemini-2.5-flash'
 
+# ── Football-data.org (Mini App: O'yinlar + Jadval bo'limlari) ─
+# Bepul API key: https://www.football-data.org/client/register
+# Kalit bo'lmasa, mini app "O'yinlar" va "Jadval" bo'limlari bo'sh xabar ko'rsatadi,
+# lekin bot ishlashda davom etadi (bu majburiy emas).
+FOOTBALL_DATA_KEY = os.getenv('FOOTBALL_DATA_KEY', '')
+
 # ── Server ────────────────────────────────────────────────
 PORT         = int(os.getenv('PORT', 8080))
 
