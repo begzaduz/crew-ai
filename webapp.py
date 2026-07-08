@@ -16,7 +16,7 @@ HTML_PAGE = """<!DOCTYPE html>
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     -webkit-tap-highlight-color: transparent;
   }
-  #app { padding-bottom: 76px; min-height: 100vh; }
+  #app { padding-bottom: 84px; min-height: 100vh; }
 
   header {
     padding: 14px 18px 10px;
@@ -48,19 +48,26 @@ HTML_PAGE = """<!DOCTYPE html>
     flex-direction: column;
     justify-content: flex-end;
     background: #162542 center / cover no-repeat;
+    transition: min-height 0.2s ease;
   }
-  .post-card.no-image { min-height: 260px; }
+  .post-card.no-image { min-height: 220px; }
   .post-card::before {
     content: "";
     position: absolute; inset: 0;
-    background: linear-gradient(180deg, rgba(14,24,48,0) 35%, rgba(14,24,48,0.55) 65%, rgba(14,24,48,0.96) 100%);
+    background: linear-gradient(180deg, rgba(14,24,48,0) 45%, rgba(14,24,48,0.55) 72%, rgba(14,24,48,0.94) 100%);
     pointer-events: none;
+    transition: background 0.25s ease;
+  }
+  .post-card.is-expanded::before {
+    background: linear-gradient(180deg, rgba(14,24,48,0.18) 0%, rgba(14,24,48,0.6) 28%, rgba(14,24,48,0.97) 58%, rgba(14,24,48,0.99) 100%);
+  }
+  .post-card.no-image::before {
+    background: linear-gradient(180deg, rgba(14,24,48,0) 0%, rgba(14,24,48,0.4) 100%);
   }
 
   .post-actions {
     position: absolute;
     top: 14px; right: 12px;
-    display: flex; flex-direction: column; gap: 10px;
     z-index: 3;
   }
   .post-actions button {
@@ -69,10 +76,8 @@ HTML_PAGE = """<!DOCTYPE html>
     border: none; color: #fff; font-size: 17px;
     display: flex; align-items: center; justify-content: center;
   }
-  .post-actions button.liked { color: #e2515a; }
 
   .post-body { position: relative; z-index: 2; padding: 18px; }
-  .post-card.no-image .post-body { padding-top: 18px; }
 
   .post-tags {
     display: flex; gap: 6px; margin-bottom: 10px;
@@ -98,15 +103,14 @@ HTML_PAGE = """<!DOCTYPE html>
   }
 
   .post-toggle {
-    display: inline; color: #f2c14e; font-weight: 600; font-size: 14px;
-    margin-left: 4px; cursor: pointer;
+    display: inline-block; color: #f2c14e; font-weight: 600; font-size: 14px;
+    margin-left: 4px; margin-top: 4px; cursor: pointer;
   }
 
   .post-footer {
-    display: flex; align-items: center; gap: 8px;
+    display: flex; align-items: center; gap: 10px;
     margin-top: 12px; font-size: 12px; color: #a9b2cc;
   }
-  .post-footer .dot { color: #425079; }
 
   .empty, .loading { text-align: center; padding: 40px 20px; color: #5f6b8f; font-size: 14px; }
 
@@ -150,6 +154,7 @@ HTML_PAGE = """<!DOCTYPE html>
     position: fixed; bottom: 0; left: 0; right: 0;
     display: flex; background: #0e1830; border-top: 0.5px solid #223154;
     padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+    z-index: 50;
   }
   nav button {
     flex: 1; background: transparent; border: none;
@@ -201,7 +206,6 @@ HTML_PAGE = """<!DOCTYPE html>
 
   const loaded = { news: false, matches: false, table: false };
   let currentPosts = [];
-  const likedPosts = new Set();
 
   function escapeHtml(str) {
     const div = document.createElement('div');
@@ -234,22 +238,12 @@ HTML_PAGE = """<!DOCTYPE html>
   }
 
   function togglePost(i) {
+    const card = document.getElementById('card-' + i);
     const snippet = document.getElementById('snippet-' + i);
     const toggle = document.getElementById('toggle-' + i);
     const expanded = snippet.classList.toggle('expanded');
+    card.classList.toggle('is-expanded', expanded);
     toggle.innerText = expanded ? 'Kamroq' : 'Ko\\'proq';
-  }
-
-  function toggleLike(i, btn) {
-    if (likedPosts.has(i)) {
-      likedPosts.delete(i);
-      btn.classList.remove('liked');
-      btn.innerText = '🤍';
-    } else {
-      likedPosts.add(i);
-      btn.classList.add('liked');
-      btn.innerText = '❤️';
-    }
   }
 
   function sharePost(i) {
@@ -278,10 +272,9 @@ HTML_PAGE = """<!DOCTYPE html>
     const bgStyle = p.image_url ? `style="background-image:url('${p.image_url}')"` : '';
     const noImageClass = p.image_url ? '' : ' no-image';
     return `
-      <div class="post-card${noImageClass}" ${bgStyle}>
+      <div class="post-card${noImageClass}" id="card-${i}" ${bgStyle}>
         <div class="post-actions">
           <button onclick="sharePost(${i})">↗</button>
-          <button id="like-${i}" onclick="toggleLike(${i}, this)">🤍</button>
         </div>
         <div class="post-body">
           <div class="post-tags"><span class="post-tag">${big ? 'ASOSIY YANGILIK' : 'YANGILIK'}</span></div>
@@ -290,7 +283,7 @@ HTML_PAGE = """<!DOCTYPE html>
           ${s.rest ? `<span class="post-toggle" id="toggle-${i}" onclick="togglePost(${i})">Ko'proq</span>` : ''}
           <div class="post-footer">
             <span>${formatDate(p.published_at)}</span>
-            ${p.url ? `<span class="dot">&middot;</span><span class="post-toggle" onclick="openSourceFor(${i})">Manba</span>` : ''}
+            ${p.url ? `<span class="post-toggle" onclick="openSourceFor(${i})">Manba</span>` : ''}
           </div>
         </div>
       </div>
