@@ -7,7 +7,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
@@ -30,9 +30,9 @@ HTML_PAGE = """<!DOCTYPE html>
     background: #0e1830;
     z-index: 10;
   }
-  header .logo { font-size: 22px; font-family: 'Poppins', sans-serif; }
+  header .logo { font-size: 22px; font-family: 'Poppins', sans-serif; letter-spacing: 0.01em; }
   header .logo .light { font-weight: 300; color: #ffffff; }
-  header .logo .bold { font-weight: 700; color: #ffffff; }
+  header .logo .medium { font-weight: 500; color: #ffffff; }
   
   .tab { display: none; }
   .tab.active { display: block; }
@@ -48,6 +48,7 @@ HTML_PAGE = """<!DOCTYPE html>
   .news-item {
     display: flex;
     align-items: stretch;
+    height: 92px;
     background: #162542;
     border: 0.5px solid #223154;
     border-radius: 14px;
@@ -61,7 +62,7 @@ HTML_PAGE = """<!DOCTYPE html>
   .news-thumb {
     flex-shrink: 0;
     align-self: stretch;
-    width: 118px;
+    width: 92px;
     background: #243357 center / cover no-repeat;
   }
   .news-thumb.no-image {
@@ -74,17 +75,17 @@ HTML_PAGE = """<!DOCTYPE html>
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 8px;
-    padding: 14px;
+    gap: 5px;
+    padding: 10px 14px;
   }
 
   .news-title {
-    font-size: 15px;
+    font-size: 13.5px;
     font-weight: 700;
-    line-height: 1.32;
+    line-height: 1.22;
     color: #ffffff;
     display: -webkit-box;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
@@ -93,9 +94,9 @@ HTML_PAGE = """<!DOCTYPE html>
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
+    font-size: 10.5px;
+    font-weight: 400;
+    letter-spacing: 0.03em;
     text-transform: uppercase;
     color: #f2c14e;
   }
@@ -325,7 +326,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <body>
 <div id="app">
   <header>
-    <div class="logo"><span class="light">ingliz</span><span class="bold">futboli</span></div>
+    <div class="logo"><span class="light">ingliz</span><span class="medium">futboli</span></div>
   </header>
   <div id="tab-news" class="tab active">
     <div id="news-list"><div class="loading">Yuklanmoqda...</div></div>
@@ -401,8 +402,25 @@ HTML_PAGE = """<!DOCTYPE html>
 
   function formatDate(iso) {
     try {
-      return new Date(iso).toLocaleString('uz-UZ', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+      const then = new Date(iso).getTime();
+      const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
+      if (diffSec < 60) return 'hozirgina';
+      const diffMin = Math.floor(diffSec / 60);
+      if (diffMin < 60) return diffMin + ' daqiqa oldin';
+      const diffHour = Math.floor(diffMin / 60);
+      if (diffHour < 24) return diffHour + ' soat oldin';
+      const diffDay = Math.floor(diffHour / 24);
+      return diffDay + ' kun oldin';
     } catch (e) { return ''; }
+  }
+
+  function stripEmoji(str) {
+    return (str || '')
+      .replace(/\\p{Extended_Pictographic}/gu, '')
+      .replace(/[\\u{1F1E6}-\\u{1F1FF}]/gu, '')
+      .replace(/[\\u200D\\uFE0F]/g, '')
+      .replace(/\\s{2,}/g, ' ')
+      .trim();
   }
 
   function splitTitle(raw) {
@@ -427,7 +445,7 @@ HTML_PAGE = """<!DOCTYPE html>
       <div class="news-item" onclick="openPost(${i})">
         <div class="news-thumb${noImageClass}" ${bgStyle}></div>
         <div class="news-content">
-          <p class="news-title">${escapeHtml(s.title)}</p>
+          <p class="news-title">${escapeHtml(stripEmoji(s.title))}</p>
           <div class="news-meta">
             <span>${formatDate(p.published_at)}</span>
           </div>
@@ -450,7 +468,7 @@ HTML_PAGE = """<!DOCTYPE html>
       <div class="detail-image${noImageClass}" ${bgStyle}></div>
       <div class="detail-body">
         <div class="detail-meta">${formatDate(p.published_at)}</div>
-        <h1 class="detail-title">${escapeHtml(s.title)}</h1>
+        <h1 class="detail-title">${escapeHtml(stripEmoji(s.title))}</h1>
         <p class="detail-text">${escapeHtml(s.rest || s.title)}</p>
         ${p.url ? `<button class="detail-source" onclick="openSourceFor(${i})">Manbani ochish 🔗</button>` : ''}
       </div>
