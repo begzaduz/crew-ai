@@ -52,6 +52,16 @@ def init_db() -> None:
                 CREATE INDEX IF NOT EXISTS idx_published_posts_date
                 ON published_posts (published_at DESC)
             ''')
+            # YANGI: Gemini API kunlik chaqiruv sanoqchisi (RPD kvotasini
+            # oldindan boshqarish uchun). Sana Pacific Time bo'yicha
+            # saqlanadi, chunki Google RPD kvotasi shu vaqt zonasida
+            # yarim tunda tiklanadi.
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS daily_api_usage (
+                    usage_date TEXT PRIMARY KEY,
+                    call_count INTEGER DEFAULT 0
+                )
+            ''')
         conn.commit()
         log.info('[DB] PostgreSQL jadval tayyor.')
     finally:
@@ -136,5 +146,54 @@ def get_recent_posts(limit: int = 50) -> list[dict]:
                 (limit,),
             )
             return [dict(row) for row in cur.fetchall()]
+    finally:
+        _put_conn(conn)
+
+
+# ── YANGI: Kunlik Gemini API kvota sanoqchisi ─────────────
+def _today_pacific() -> str:
+    """Joriy sanani Pacific Time bo'yicha 'YYYY-MM-DD' shaklida qaytaradi
+    (Gemini RPD kvotasi shu vaqt zonasida yarim tunda tiklanadi)."""
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT (NOW() AT TIME ZONE 'America/Los_Angeles')::date::text")
+            return cur.fetchone()[0]
+    finally:
+        _put_conn(conn)
+
+
+def get_today_api_calls() -> int:
+    """Bugungi (Pacific Time) Gemini API chaqiruvlar sonini qaytaradi."""
+    today = _today_pacific()
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                'SELECT call_count FROM daily_api_usage WHERE usage_date = %s',
+                (today,),
+            )
+            row = cur.fetchone()
+            return int(row[0]) if row else 0
+    finally:
+        _put_conn(conn)
+
+
+def increment_api_calls(n: int = 1) -> None:
+    """Bugungi (Pacific Time) API chaqiruvlar sonini n ga oshiradi."""
+    today = _today_pacific()
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                '''INSERT INTO daily_api_usage (usage_date, call_count)
+                   VALUES (%s, %s)
+                   ON CONFLICT (usage_date)
+                   DO UPDATE SET call_count = daily_api_usage.call_count + %s''',
+                (today, n, n),
+            )
+        conn.commit()
+    except Exception as e:
+        log.error(f'[DB] increment_api_calls xato: {e}')
     finally:
         _put_conn(conn)
