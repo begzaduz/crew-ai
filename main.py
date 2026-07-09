@@ -5,7 +5,7 @@ import hmac
 import logging
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+from socketserver import ThreadingMixIn
 
 import requests
 
