@@ -107,6 +107,172 @@ HTML_PAGE = """<!DOCTYPE html>
     flex-shrink: 0;
   }
 
+  /* ---- Yangilik tafsiloti (ichki sahifa) ---- */
+  #news-detail { display: none; }
+  #news-detail.active { display: block; }
+
+  .detail-topbar {
+    display: flex;
+    align-items: center;
+    padding: 10px 14px;
+    gap: 10px;
+  }
+  .detail-back {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #162542;
+    border: 0.5px solid #223154;
+    color: #ffffff;
+    font-size: 17px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .detail-back:active {
+    opacity: 0.75;
+  }
+
+  .detail-image {
+    margin: 0 14px 4px;
+    height: 200px;
+    border-radius: 16px;
+    background: #243357 center / cover no-repeat;
+  }
+  .detail-image.no-image {
+    background: linear-gradient(135deg, #243357 0%, #0e1830 100%);
+  }
+
+  .detail-body {
+    padding: 16px 14px 24px;
+  }
+  .detail-meta {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #f2c14e;
+    margin-bottom: 8px;
+  }
+  .detail-title {
+    font-size: 21px;
+    font-weight: 800;
+    line-height: 1.3;
+    color: #ffffff;
+    margin-bottom: 14px;
+  }
+  .detail-text {
+    font-size: 14.5px;
+    line-height: 1.65;
+    color: #d5dbea;
+    white-space: pre-line;
+  }
+  .detail-source {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 20px;
+    padding: 11px 18px;
+    border-radius: 10px;
+    background: #f2c14e;
+    color: #0e1830;
+    font-weight: 700;
+    font-size: 13.5px;
+    border: none;
+    cursor: pointer;
+  }
+  .detail-source:active {
+    opacity: 0.85;
+  }
+
+  /* ---- Yangilik detali: ilova ichida ochiladigan to'liq sahifa ---- */
+  .news-detail {
+    position: fixed;
+    inset: 0;
+    background: #0e1830;
+    z-index: 200;
+    overflow-y: auto;
+    transform: translateX(100%);
+    transition: transform 0.28s ease;
+  }
+  .news-detail.open {
+    transform: translateX(0);
+  }
+  .detail-header {
+    position: sticky;
+    top: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    background: #0e1830;
+    border-bottom: 0.5px solid #223154;
+    z-index: 2;
+  }
+  .detail-back {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: #162542;
+    border: 0.5px solid #223154;
+    color: #ffffff;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .detail-header span {
+    font-size: 13px;
+    color: #8a93ac;
+    font-weight: 600;
+  }
+  .detail-image {
+    height: 220px;
+    background: #243357 center / cover no-repeat;
+  }
+  .detail-image.no-image {
+    background: linear-gradient(135deg, #243357 0%, #0e1830 100%);
+  }
+  .detail-body {
+    padding: 20px;
+  }
+  .detail-meta {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #f2c14e;
+    margin-bottom: 10px;
+  }
+  .detail-title {
+    font-size: 21px;
+    font-weight: 800;
+    line-height: 1.3;
+    color: #ffffff;
+    margin-bottom: 14px;
+  }
+  .detail-text {
+    font-size: 15px;
+    line-height: 1.7;
+    color: #d5dbea;
+    white-space: pre-line;
+  }
+  .detail-source {
+    display: inline-block;
+    margin-top: 20px;
+    padding: 10px 18px;
+    background: #162542;
+    border: 0.5px solid #223154;
+    border-radius: 10px;
+    color: #f2c14e;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
   /* ---- Boshqa sahifa elementlari stabil saqlandi ---- */
   .empty, .loading { text-align: center; padding: 40px 20px; color: #5f6b8f; font-size: 14px; }
   .day-picker { display: flex; gap: 8px; overflow-x: auto; padding: 14px 14px 4px; }
@@ -162,7 +328,8 @@ HTML_PAGE = """<!DOCTYPE html>
     <div class="logo"><span class="light">ingliz</span><span class="bold">futboli</span></div>
   </header>
   <div id="tab-news" class="tab active">
-    <div id="news-content"><div class="loading">Yuklanmoqda...</div></div>
+    <div id="news-list"><div class="loading">Yuklanmoqda...</div></div>
+    <div id="news-detail"></div>
   </div>
   <div id="tab-matches" class="tab">
     <div class="day-picker" id="day-picker"></div>
@@ -170,6 +337,19 @@ HTML_PAGE = """<!DOCTYPE html>
   </div>
   <div id="tab-table" class="tab">
     <div id="table-content"><div class="loading">Yuklanmoqda...</div></div>
+  </div>
+</div>
+<div id="news-detail" class="news-detail">
+  <div class="detail-header">
+    <button class="detail-back" onclick="closeNewsDetail()">←</button>
+    <span>Yangilik</span>
+  </div>
+  <div class="detail-image" id="detail-image"></div>
+  <div class="detail-body">
+    <p class="detail-meta" id="detail-meta"></p>
+    <h2 class="detail-title" id="detail-title"></h2>
+    <p class="detail-text" id="detail-text"></p>
+    <span class="detail-source" id="detail-source" style="display:none">Manbani ochish 🔗</span>
   </div>
 </div>
 <nav>
@@ -206,6 +386,9 @@ HTML_PAGE = """<!DOCTYPE html>
   }
 
   function switchTab(name) {
+    if (name !== 'news' && document.getElementById('news-detail').classList.contains('active')) {
+      closePost();
+    }
     document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
     document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
@@ -241,7 +424,7 @@ HTML_PAGE = """<!DOCTYPE html>
     const bgStyle = p.image_url ? `style="background-image:url('${escapeAttr(p.image_url)}')"` : '';
     const noImageClass = p.image_url ? '' : ' no-image';
     return `
-      <div class="news-item" onclick="openSourceFor(${i})">
+      <div class="news-item" onclick="openPost(${i})">
         <div class="news-thumb${noImageClass}" ${bgStyle}></div>
         <div class="news-content">
           <p class="news-title">${escapeHtml(s.title)}</p>
@@ -253,9 +436,38 @@ HTML_PAGE = """<!DOCTYPE html>
     `;
   }
 
+  function openPost(i) {
+    const p = currentPosts[i];
+    if (!p) return;
+    const s = splitTitle(p.post_text || p.title || '');
+    const bgStyle = p.image_url ? `style="background-image:url('${escapeAttr(p.image_url)}')"` : '';
+    const noImageClass = p.image_url ? '' : ' no-image';
+    const detail = document.getElementById('news-detail');
+    detail.innerHTML = `
+      <div class="detail-topbar">
+        <button class="detail-back" onclick="closePost()">←</button>
+      </div>
+      <div class="detail-image${noImageClass}" ${bgStyle}></div>
+      <div class="detail-body">
+        <div class="detail-meta">${formatDate(p.published_at)}</div>
+        <h1 class="detail-title">${escapeHtml(s.title)}</h1>
+        <p class="detail-text">${escapeHtml(s.rest || s.title)}</p>
+        ${p.url ? `<button class="detail-source" onclick="openSourceFor(${i})">Manbani ochish 🔗</button>` : ''}
+      </div>
+    `;
+    document.getElementById('news-list').style.display = 'none';
+    detail.classList.add('active');
+    window.scrollTo(0, 0);
+  }
+
+  function closePost() {
+    document.getElementById('news-detail').classList.remove('active');
+    document.getElementById('news-list').style.display = '';
+  }
+
   async function loadNews() {
     loaded.news = true;
-    const el = document.getElementById('news-content');
+    const el = document.getElementById('news-list');
     try {
       const res = await fetch('/api/posts');
       const posts = await res.json();
