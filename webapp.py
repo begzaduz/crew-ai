@@ -403,6 +403,15 @@ HTML_PAGE = """<!DOCTYPE html>
     return { title, rest };
   }
 
+  function stripChannelTag(text) {
+    return (text || '')
+      .split('\\n')
+      .filter(line => !/^@[\\w\\d_]+$/.test(line.trim()))
+      .join('\\n')
+      .replace(/\\n{3,}/g, '\\n\\n')
+      .trim();
+  }
+
   function openSourceFor(i) {
     const p = currentPosts[i];
     if (!p || !p.url) return;
@@ -451,7 +460,7 @@ HTML_PAGE = """<!DOCTYPE html>
       <div class="detail-body">
         <div class="detail-meta">${formatDate(p.published_at)}</div>
         <h1 class="detail-title">${escapeHtml(stripEmoji(s.title))}</h1>
-        <p class="detail-text">${escapeHtml(s.rest || s.title)}</p>
+        <p class="detail-text">${escapeHtml(stripChannelTag(s.rest || s.title))}</p>
         ${p.url ? `<div class="detail-source" onclick="openSourceFor(${i})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><line x1="7.5" y1="9" x2="16.5" y2="9"/><line x1="7.5" y1="12.5" x2="16.5" y2="12.5"/><line x1="7.5" y1="16" x2="12.5" y2="16"/></svg><span>${escapeHtml(sourceName(p.url))}</span></div>` : ''}
       </div>
     `;
