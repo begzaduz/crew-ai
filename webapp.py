@@ -7,7 +7,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
@@ -31,8 +31,8 @@ HTML_PAGE = """<!DOCTYPE html>
     z-index: 10;
   }
   header .logo { font-size: 22px; font-family: 'Poppins', sans-serif; letter-spacing: 0.01em; }
-  header .logo .light { font-weight: 300; color: #ffffff; }
-  header .logo .medium { font-weight: 500; color: #ffffff; }
+  header .logo .light { font-weight: 200; color: #ffffff; }
+  header .logo .medium { font-weight: 700; color: #ffffff; }
   
   .tab { display: none; }
   .tab.active { display: block; }
@@ -48,7 +48,7 @@ HTML_PAGE = """<!DOCTYPE html>
   .news-item {
     display: flex;
     align-items: stretch;
-    height: 92px;
+    height: 128px;
     background: #162542;
     border: 0.5px solid #223154;
     border-radius: 14px;
@@ -62,7 +62,7 @@ HTML_PAGE = """<!DOCTYPE html>
   .news-thumb {
     flex-shrink: 0;
     align-self: stretch;
-    width: 92px;
+    width: 128px;
     background: #243357 center / cover no-repeat;
   }
   .news-thumb.no-image {
@@ -74,18 +74,17 @@ HTML_PAGE = """<!DOCTYPE html>
     min-width: 0;
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    gap: 5px;
-    padding: 10px 14px;
+    justify-content: space-between;
+    padding: 12px 14px;
   }
 
   .news-title {
-    font-size: 13.5px;
+    font-size: 14px;
     font-weight: 700;
-    line-height: 1.22;
+    line-height: 1.28;
     color: #ffffff;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
@@ -94,11 +93,11 @@ HTML_PAGE = """<!DOCTYPE html>
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 10.5px;
+    font-size: 10px;
     font-weight: 400;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
+    letter-spacing: 0.01em;
     color: #f2c14e;
+    opacity: 0.6;
   }
   .news-meta .badge {
     width: 20px;
@@ -187,93 +186,6 @@ HTML_PAGE = """<!DOCTYPE html>
     opacity: 0.85;
   }
 
-  /* ---- Yangilik detali: ilova ichida ochiladigan to'liq sahifa ---- */
-  .news-detail {
-    position: fixed;
-    inset: 0;
-    background: #0e1830;
-    z-index: 200;
-    overflow-y: auto;
-    transform: translateX(100%);
-    transition: transform 0.28s ease;
-  }
-  .news-detail.open {
-    transform: translateX(0);
-  }
-  .detail-header {
-    position: sticky;
-    top: 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 14px 16px;
-    background: #0e1830;
-    border-bottom: 0.5px solid #223154;
-    z-index: 2;
-  }
-  .detail-back {
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    background: #162542;
-    border: 0.5px solid #223154;
-    color: #ffffff;
-    font-size: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-  .detail-header span {
-    font-size: 13px;
-    color: #8a93ac;
-    font-weight: 600;
-  }
-  .detail-image {
-    height: 220px;
-    background: #243357 center / cover no-repeat;
-  }
-  .detail-image.no-image {
-    background: linear-gradient(135deg, #243357 0%, #0e1830 100%);
-  }
-  .detail-body {
-    padding: 20px;
-  }
-  .detail-meta {
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: #f2c14e;
-    margin-bottom: 10px;
-  }
-  .detail-title {
-    font-size: 21px;
-    font-weight: 800;
-    line-height: 1.3;
-    color: #ffffff;
-    margin-bottom: 14px;
-  }
-  .detail-text {
-    font-size: 15px;
-    line-height: 1.7;
-    color: #d5dbea;
-    white-space: pre-line;
-  }
-  .detail-source {
-    display: inline-block;
-    margin-top: 20px;
-    padding: 10px 18px;
-    background: #162542;
-    border: 0.5px solid #223154;
-    border-radius: 10px;
-    color: #f2c14e;
-    font-size: 13.5px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
   /* ---- Boshqa sahifa elementlari stabil saqlandi ---- */
   .empty, .loading { text-align: center; padding: 40px 20px; color: #5f6b8f; font-size: 14px; }
   .day-picker { display: flex; gap: 8px; overflow-x: auto; padding: 14px 14px 4px; }
@@ -316,11 +228,28 @@ HTML_PAGE = """<!DOCTYPE html>
   }
   nav button {
     flex: 1; background: transparent; border: none;
-    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
     padding: 4px 0; color: #5f6b8f; font-size: 10.5px;
     cursor: pointer;
+    position: relative;
+  }
+  nav button svg {
+    width: 22px; height: 22px;
+    transition: transform 0.15s ease;
   }
   nav button.active { color: #f2c14e; }
+  nav button.active svg { transform: scale(1.08); }
+  nav button.active::before {
+    content: "";
+    position: absolute;
+    top: -9px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 22px;
+    height: 3px;
+    border-radius: 3px;
+    background: #f2c14e;
+  }
 </style>
 </head>
 <body>
@@ -340,30 +269,18 @@ HTML_PAGE = """<!DOCTYPE html>
     <div id="table-content"><div class="loading">Yuklanmoqda...</div></div>
   </div>
 </div>
-<div id="news-detail" class="news-detail">
-  <div class="detail-header">
-    <button class="detail-back" onclick="closeNewsDetail()">←</button>
-    <span>Yangilik</span>
-  </div>
-  <div class="detail-image" id="detail-image"></div>
-  <div class="detail-body">
-    <p class="detail-meta" id="detail-meta"></p>
-    <h2 class="detail-title" id="detail-title"></h2>
-    <p class="detail-text" id="detail-text"></p>
-    <span class="detail-source" id="detail-source" style="display:none">Manbani ochish 🔗</span>
-  </div>
-</div>
+
 <nav>
   <button class="active" data-tab="news" onclick="switchTab('news')">
-    <span style="font-size:20px;">📰</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><line x1="7.5" y1="9" x2="16.5" y2="9"/><line x1="7.5" y1="12.5" x2="16.5" y2="12.5"/><line x1="7.5" y1="16" x2="12.5" y2="16"/></svg>
     <span>Yangiliklar</span>
   </button>
   <button data-tab="matches" onclick="switchTab('matches')">
-    <span style="font-size:20px;">⚽</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 8.2l2.7 1.9-1 3.2h-3.4l-1-3.2z"/><path d="M12 8.2V4.7M9.3 10.1L6 7.8M14.7 10.1L18 7.8M9.9 13.6l-2.7 3M14.1 13.6l2.7 3"/></svg>
     <span>O'yinlar</span>
   </button>
   <button data-tab="table" onclick="switchTab('table')">
-    <span style="font-size:20px;">📊</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19.5" x2="5" y2="13"/><line x1="12" y1="19.5" x2="12" y2="7"/><line x1="19" y1="19.5" x2="19" y2="15.5"/><line x1="3" y1="19.5" x2="21" y2="19.5"/></svg>
     <span>Jadval</span>
   </button>
 </nav>
