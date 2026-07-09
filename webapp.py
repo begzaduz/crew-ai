@@ -17,13 +17,13 @@ HTML_PAGE = """<!DOCTYPE html>
     -webkit-tap-highlight-color: transparent;
     overflow-x: hidden;
   }
-  #app { padding-bottom: 84px; min-height: 100vh; }
+  #app { padding-bottom: 68px; min-height: 100vh; }
   
   header {
     padding: 14px 18px 10px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
     border-bottom: 0.5px solid #223154;
     position: sticky;
     top: 0;
@@ -48,7 +48,7 @@ HTML_PAGE = """<!DOCTYPE html>
   .news-item {
     display: flex;
     align-items: stretch;
-    height: 128px;
+    height: 100px;
     background: #162542;
     border: 0.5px solid #223154;
     border-radius: 14px;
@@ -62,7 +62,7 @@ HTML_PAGE = """<!DOCTYPE html>
   .news-thumb {
     flex-shrink: 0;
     align-self: stretch;
-    width: 128px;
+    width: 100px;
     background: #243357 center / cover no-repeat;
   }
   .news-thumb.no-image {
@@ -75,16 +75,16 @@ HTML_PAGE = """<!DOCTYPE html>
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    padding: 12px 14px;
+    padding: 11px 14px;
   }
 
   .news-title {
-    font-size: 14px;
+    font-size: 13.5px;
     font-weight: 700;
-    line-height: 1.28;
+    line-height: 1.26;
     color: #ffffff;
     display: -webkit-box;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
@@ -223,26 +223,26 @@ HTML_PAGE = """<!DOCTYPE html>
   nav {
     position: fixed; bottom: 0; left: 0; right: 0;
     display: flex; background: #0e1830; border-top: 0.5px solid #223154;
-    padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+    padding: 10px 0 max(10px, env(safe-area-inset-bottom));
     z-index: 50;
   }
   nav button {
     flex: 1; background: transparent; border: none;
-    display: flex; flex-direction: column; align-items: center; gap: 4px;
-    padding: 4px 0; color: #5f6b8f; font-size: 10.5px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 6px 0; color: #5f6b8f;
     cursor: pointer;
     position: relative;
   }
   nav button svg {
-    width: 22px; height: 22px;
+    width: 25px; height: 25px;
     transition: transform 0.15s ease;
   }
   nav button.active { color: #f2c14e; }
-  nav button.active svg { transform: scale(1.08); }
+  nav button.active svg { transform: scale(1.1); }
   nav button.active::before {
     content: "";
     position: absolute;
-    top: -9px;
+    top: -10px;
     left: 50%;
     transform: translateX(-50%);
     width: 22px;
@@ -250,9 +250,57 @@ HTML_PAGE = """<!DOCTYPE html>
     border-radius: 3px;
     background: #f2c14e;
   }
+
+  /* ---- Kirish animatsiyasi (splash) ---- */
+  #splash {
+    position: fixed; inset: 0; z-index: 1000;
+    background: #0e1830;
+    display: flex; align-items: center; justify-content: center;
+    animation: splashHide 0.5s ease forwards;
+    animation-delay: 2s;
+  }
+  .splash-wrap {
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+  }
+  .splash-logo {
+    font-size: 26px; font-family: 'Poppins', sans-serif; letter-spacing: 0.01em;
+    display: flex;
+  }
+  .splash-logo .light {
+    font-weight: 200; color: #ffffff;
+    opacity: 0; transform: translateX(-22px);
+    animation: splashIn 0.55s ease forwards;
+    animation-delay: 0.15s;
+  }
+  .splash-logo .medium {
+    font-weight: 700; color: #ffffff;
+    opacity: 0; transform: translateX(22px);
+    animation: splashIn 0.55s ease forwards;
+    animation-delay: 0.35s;
+  }
+  .splash-line {
+    width: 0; height: 2px; background: #f2c14e;
+    animation: splashLine 0.4s ease forwards;
+    animation-delay: 0.7s;
+  }
+  @keyframes splashIn {
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes splashLine {
+    to { width: 54px; }
+  }
+  @keyframes splashHide {
+    to { opacity: 0; visibility: hidden; pointer-events: none; }
+  }
 </style>
 </head>
 <body>
+<div id="splash">
+  <div class="splash-wrap">
+    <div class="splash-logo"><span class="light">ingliz</span><span class="medium">futboli</span></div>
+    <div class="splash-line"></div>
+  </div>
+</div>
 <div id="app">
   <header>
     <div class="logo"><span class="light">ingliz</span><span class="medium">futboli</span></div>
@@ -273,20 +321,22 @@ HTML_PAGE = """<!DOCTYPE html>
 <nav>
   <button class="active" data-tab="news" onclick="switchTab('news')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><line x1="7.5" y1="9" x2="16.5" y2="9"/><line x1="7.5" y1="12.5" x2="16.5" y2="12.5"/><line x1="7.5" y1="16" x2="12.5" y2="16"/></svg>
-    <span>Yangiliklar</span>
   </button>
   <button data-tab="matches" onclick="switchTab('matches')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 8.2l2.7 1.9-1 3.2h-3.4l-1-3.2z"/><path d="M12 8.2V4.7M9.3 10.1L6 7.8M14.7 10.1L18 7.8M9.9 13.6l-2.7 3M14.1 13.6l2.7 3"/></svg>
-    <span>O'yinlar</span>
   </button>
   <button data-tab="table" onclick="switchTab('table')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19.5" x2="5" y2="13"/><line x1="12" y1="19.5" x2="12" y2="7"/><line x1="19" y1="19.5" x2="19" y2="15.5"/><line x1="3" y1="19.5" x2="21" y2="19.5"/></svg>
-    <span>Jadval</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><line x1="3.5" y1="9.7" x2="20.5" y2="9.7"/><line x1="3.5" y1="14.3" x2="20.5" y2="14.3"/><line x1="9.3" y1="4.5" x2="9.3" y2="19.5"/></svg>
   </button>
 </nav>
 <script>
   const tg = window.Telegram ? window.Telegram.WebApp : null;
   if (tg) { tg.ready(); tg.expand(); }
+
+  setTimeout(() => {
+    const splash = document.getElementById('splash');
+    if (splash) splash.remove();
+  }, 2550);
 
   const loaded = { news: false, matches: false, table: false };
   let currentPosts = [];
