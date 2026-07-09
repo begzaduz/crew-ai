@@ -7,7 +7,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@100;200;300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
@@ -24,15 +24,25 @@ HTML_PAGE = """<!DOCTYPE html>
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 10px;
     border-bottom: 0.5px solid #223154;
     position: sticky;
     top: 0;
     background: #0e1830;
     z-index: 10;
   }
+  header .logo-badge {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: #162542;
+    border: 0.5px solid #223154;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  header .logo-badge svg { width: 14px; height: 14px; color: #f2c14e; }
   header .logo { font-size: 22px; font-family: 'Poppins', sans-serif; letter-spacing: 0.01em; }
-  header .logo .light { font-weight: 200; color: #ffffff; }
-  header .logo .medium { font-weight: 700; color: #ffffff; }
+  header .logo .light { font-weight: 100; color: #ffffff; }
+  header .logo .medium { font-weight: 600; color: #ffffff; }
   
   .tab { display: none; }
   .tab.active { display: block; }
@@ -48,7 +58,7 @@ HTML_PAGE = """<!DOCTYPE html>
   .news-item {
     display: flex;
     align-items: stretch;
-    height: 100px;
+    height: 112px;
     background: #162542;
     border: 0.5px solid #223154;
     border-radius: 14px;
@@ -62,7 +72,7 @@ HTML_PAGE = """<!DOCTYPE html>
   .news-thumb {
     flex-shrink: 0;
     align-self: stretch;
-    width: 100px;
+    width: 112px;
     background: #243357 center / cover no-repeat;
   }
   .news-thumb.no-image {
@@ -74,7 +84,8 @@ HTML_PAGE = """<!DOCTYPE html>
     min-width: 0;
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
+    justify-content: center;
+    gap: 6px;
     padding: 11px 14px;
   }
 
@@ -84,7 +95,7 @@ HTML_PAGE = """<!DOCTYPE html>
     line-height: 1.26;
     color: #ffffff;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
@@ -93,11 +104,12 @@ HTML_PAGE = """<!DOCTYPE html>
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 10px;
+    font-size: 10.5px;
     font-weight: 400;
+    font-style: italic;
     letter-spacing: 0.01em;
-    color: #f2c14e;
-    opacity: 0.6;
+    color: #ffffff;
+    opacity: 0.55;
   }
   .news-meta .badge {
     width: 20px;
@@ -149,10 +161,11 @@ HTML_PAGE = """<!DOCTYPE html>
   }
   .detail-meta {
     font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: #f2c14e;
+    font-weight: 400;
+    font-style: italic;
+    letter-spacing: 0.01em;
+    color: #ffffff;
+    opacity: 0.55;
     margin-bottom: 8px;
   }
   .detail-title {
@@ -173,17 +186,18 @@ HTML_PAGE = """<!DOCTYPE html>
     align-items: center;
     gap: 6px;
     margin-top: 20px;
-    padding: 11px 18px;
-    border-radius: 10px;
-    background: #f2c14e;
-    color: #0e1830;
-    font-weight: 700;
-    font-size: 13.5px;
-    border: none;
+    color: #f2c14e;
+    font-weight: 500;
+    font-size: 12.5px;
     cursor: pointer;
   }
+  .detail-source svg {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+  }
   .detail-source:active {
-    opacity: 0.85;
+    opacity: 0.7;
   }
 
   /* ---- Boshqa sahifa elementlari stabil saqlandi ---- */
@@ -256,38 +270,30 @@ HTML_PAGE = """<!DOCTYPE html>
     position: fixed; inset: 0; z-index: 1000;
     background: #0e1830;
     display: flex; align-items: center; justify-content: center;
-    animation: splashHide 0.5s ease forwards;
-    animation-delay: 2s;
+    animation: splashHide 0.6s ease forwards;
+    animation-delay: 3.4s;
   }
   .splash-wrap {
-    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    display: flex; flex-direction: column; align-items: center;
   }
   .splash-logo {
     font-size: 26px; font-family: 'Poppins', sans-serif; letter-spacing: 0.01em;
     display: flex;
   }
   .splash-logo .light {
-    font-weight: 200; color: #ffffff;
+    font-weight: 100; color: #ffffff;
     opacity: 0; transform: translateX(-22px);
     animation: splashIn 0.55s ease forwards;
     animation-delay: 0.15s;
   }
   .splash-logo .medium {
-    font-weight: 700; color: #ffffff;
+    font-weight: 600; color: #ffffff;
     opacity: 0; transform: translateX(22px);
     animation: splashIn 0.55s ease forwards;
     animation-delay: 0.35s;
   }
-  .splash-line {
-    width: 0; height: 2px; background: #f2c14e;
-    animation: splashLine 0.4s ease forwards;
-    animation-delay: 0.7s;
-  }
   @keyframes splashIn {
     to { opacity: 1; transform: translateX(0); }
-  }
-  @keyframes splashLine {
-    to { width: 54px; }
   }
   @keyframes splashHide {
     to { opacity: 0; visibility: hidden; pointer-events: none; }
@@ -298,11 +304,11 @@ HTML_PAGE = """<!DOCTYPE html>
 <div id="splash">
   <div class="splash-wrap">
     <div class="splash-logo"><span class="light">ingliz</span><span class="medium">futboli</span></div>
-    <div class="splash-line"></div>
   </div>
 </div>
 <div id="app">
   <header>
+    <div class="logo-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 8.2l2.7 1.9-1 3.2h-3.4l-1-3.2z"/><path d="M12 8.2V4.7M9.3 10.1L6 7.8M14.7 10.1L18 7.8M9.9 13.6l-2.7 3M14.1 13.6l2.7 3"/></svg></div>
     <div class="logo"><span class="light">ingliz</span><span class="medium">futboli</span></div>
   </header>
   <div id="tab-news" class="tab active">
@@ -336,7 +342,7 @@ HTML_PAGE = """<!DOCTYPE html>
   setTimeout(() => {
     const splash = document.getElementById('splash');
     if (splash) splash.remove();
-  }, 2550);
+  }, 4050);
 
   const loaded = { news: false, matches: false, table: false };
   let currentPosts = [];
@@ -421,6 +427,15 @@ HTML_PAGE = """<!DOCTYPE html>
     `;
   }
 
+  function sourceName(url) {
+    try {
+      const host = new URL(url).hostname.replace(/^www\\./, '');
+      return host;
+    } catch (e) {
+      return 'Manba';
+    }
+  }
+
   function openPost(i) {
     const p = currentPosts[i];
     if (!p) return;
@@ -437,7 +452,7 @@ HTML_PAGE = """<!DOCTYPE html>
         <div class="detail-meta">${formatDate(p.published_at)}</div>
         <h1 class="detail-title">${escapeHtml(stripEmoji(s.title))}</h1>
         <p class="detail-text">${escapeHtml(s.rest || s.title)}</p>
-        ${p.url ? `<button class="detail-source" onclick="openSourceFor(${i})">Manbani ochish 🔗</button>` : ''}
+        ${p.url ? `<div class="detail-source" onclick="openSourceFor(${i})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><line x1="7.5" y1="9" x2="16.5" y2="9"/><line x1="7.5" y1="12.5" x2="16.5" y2="12.5"/><line x1="7.5" y1="16" x2="12.5" y2="16"/></svg><span>${escapeHtml(sourceName(p.url))}</span></div>` : ''}
       </div>
     `;
     document.getElementById('news-list').style.display = 'none';
