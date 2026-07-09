@@ -62,17 +62,43 @@ def apply_names(text: str) -> str:
     return result
 
 
-# ── Gemini API — retry bilan ──────────────────────────────
+# ── Gemini API — kvota tejash uchun retry o'chirilgan ─────
 def groq_call(system_prompt: str, user_prompt: str,
               temperature: float = 0.4, max_tokens: int = 700) -> str:
     """
-    Gemini ga so'rov. Rate limit (429) bo'lsa 3 marta qayta urinadi:
-    1-urinish: 30s kutadi, 2-urinish: 60s, 3-urinish: xato ko'taradi.
+    Gemini ga so'rov.
+    RPD (kunlik) limit juda kichik bo'lgani uchun 429/RESOURCE_EXHAUSTED
+    kelsa DARHOL xato ko'taradi — qayta urinish yo'q. Qayta urinish RPD
+    tugagan holatda befoyda, faqat vaqtni yo'qotadi va process'ni bloklaydi.
+    Faqat vaqtinchalik server xatosida (5xx) 1 marta 15s dan keyin
+    qayta urinadi, chunki bu kvotaga aloqasi yo'q, tarmoq/server muammosi.
     Funksiya nomi 'groq_call' saqlanib qoldi — pastdagi agentlar shu nomni
     chaqiradi, ularga tegmaslik uchun.
     """
-    delays = [30, 60]
-    for attempt, delay in enumerate(delays + [None], start=1):
+    try:
+        resp = gemini_client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=temperature,
+                max_output_tokens=max_tokens,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            ),
+        )
+        return (resp.text or '').strip()
+
+    except ClientError as e:
+        is_rate_limit = '429' in str(e) or 'RESOURCE_EXHAUSTED' in str(e)
+        if is_rate_limit:
+            log.error('[Gemini] Kvota tugadi (429) — qayta urinilmaydi, kvota tejaldi.')
+        else:
+            log.error(f'[Gemini] Client xato: {e}')
+        raise
+
+    except ServerError as e:
+        log.warning('[Gemini] Server xato. 15s kutib 1 marta qayta urinamiz...')
+        time.sleep(15)
         try:
             resp = gemini_client.models.generate_content(
                 model=GEMINI_MODEL,
@@ -85,22 +111,9 @@ def groq_call(system_prompt: str, user_prompt: str,
                 ),
             )
             return (resp.text or '').strip()
-
-        except ClientError as e:
-            is_rate_limit = '429' in str(e) or 'RESOURCE_EXHAUSTED' in str(e)
-            if is_rate_limit and delay is not None:
-                log.warning(f'[Gemini] Rate limit. {delay}s kutilmoqda... ({attempt}/3)')
-                time.sleep(delay)
-                continue
-            log.error(f'[Gemini] Client xato: {e}')
+        except Exception as e2:
+            log.error(f'[Gemini] Server xato — qayta urinishdan keyin ham: {e2}')
             raise
-
-        except ServerError as e:
-            if delay is None:
-                log.error('[Gemini] Server xato — 3 urinishdan keyin ham.')
-                raise
-            log.warning(f'[Gemini] Server xato. {delay}s kutilmoqda... ({attempt}/3)')
-            time.sleep(delay)
 
 
 # ── Rule-based validator ──────────────────────────────────
