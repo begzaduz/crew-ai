@@ -9,8 +9,11 @@ from urllib.parse import urlparse, parse_qs
 
 import requests
 
-from config import TOKEN, CHANNEL, ADMIN_IDS, PORT, INTERVAL, WEBHOOK_SECRET
-from database import is_processed, mark_processed, clear_cache, get_stats, init_db, save_post, get_recent_posts
+from config import TOKEN, CHANNEL, ADMIN_IDS, PORT, INTERVAL, WEBHOOK_SECRET, DAILY_POST_BUDGET
+from database import (
+    is_processed, mark_processed, clear_cache, get_stats, init_db,
+    save_post, get_recent_posts, get_today_api_calls, increment_api_calls,
+)
 from feeds import fetch_news, fetch_og_image
 from agents import generate_post
 from api_football import fetch_standings, fetch_matches_by_date
@@ -20,6 +23,12 @@ log = logging.getLogger(__name__)
 
 # Bir vaqtda faqat bitta auto_news_post() ishlashi uchun
 _news_lock = threading.Lock()
+
+# YANGI: Pipeline'da 3 ta agent (Researcher+Writer+Editor) ishlaydi,
+# demak har bir post urinishi taxminan 3 ta Gemini API chaqiruvini
+# sarflaydi. Shu asosda kunlik xavfsiz limit hisoblanadi.
+CALLS_PER_POST = 3
+DAILY_API_LIMIT = DAILY_POST_BUDGET * CALLS_PER_POST
 
 
 # ── Telegram yordamchi ────────────────────────────────────
@@ -114,6 +123,13 @@ def is_admin(chat_id: int) -> bool:
     return chat_id in ADMIN_IDS
 
 
+# ── YANGI: Kunlik API byudjetini tekshirish ───────────────
+def _quota_available() -> tuple[bool, int, int]:
+    """(mavjudmi, ishlatilgan, limit) qaytaradi."""
+    used = get_today_api_calls()
+    return used < DAILY_API_LIMIT, used, DAILY_API_LIMIT
+
+
 # ── Auto yangilik yuborish ────────────────────────────────
 def auto_news_post() -> bool:
     if not _news_lock.acquire(blocking=False):
@@ -121,6 +137,11 @@ def auto_news_post() -> bool:
         return False
 
     try:
+        ok, used, limit = _quota_available()
+        if not ok:
+            log.info(f'[Auto] Kunlik API byudjeti tugagan ({used}/{limit}). O\'tkazib yuborildi.')
+            return False
+
         log.info('[Auto] Yangilik qidirilmoqda...')
         articles = fetch_news()
         if not articles:
@@ -131,15 +152,22 @@ def auto_news_post() -> bool:
             if is_processed(article['url']):
                 continue
 
+            ok, used, limit = _quota_available()
+            if not ok:
+                log.info(f'[Auto] Kunlik API byudjeti tugadi ({used}/{limit}). To\'xtatildi.')
+                return False
+
             log.info(f'[Auto] Qayta ishlanmoqda (score:{article["score"]}): {article["title"][:60]}')
             try:
                 post = generate_post(article)
+                increment_api_calls(CALLS_PER_POST)
             except Exception as e:
+                increment_api_calls(CALLS_PER_POST)
                 err = str(e)
                 is_quota = '429' in err or 'RESOURCE_EXHAUSTED' in err
                 if is_quota:
                     log.error('[Auto] Gemini kvotasi tugadi. To\'xtatildi.')
-                    notify_admins('⚠️ Gemini API kvotasi tugadi. Ertaga avtomatik tiklanadi.')
+                    notify_admins('⚠️ Gemini API kvotasi tugadi. Ertaga (Pacific vaqti bo\'yicha) avtomatik tiklanadi.')
                     return False
                 log.error(f'[Auto] AI xato: {e}')
                 mark_processed(article['url'], article['title'], article['score'])
@@ -218,13 +246,18 @@ def handle_update(update: dict) -> None:
             if not is_admin(chat_id):
                 tg_send(chat_id, '⛔ Faqat adminlar uchun.')
                 return
+            ok_quota, used, limit = _quota_available()
+            if not ok_quota:
+                tg_send(chat_id, f'⛔ Bugungi API byudjeti tugadi ({used}/{limit}). Ertaga (Pacific vaqti bo\'yicha) tiklanadi.')
+                return
             tg_send(chat_id, '⏳ Yangilik olinayapti (3 agent ishlaydi)...')
             ok = auto_news_post()
             tg_send(chat_id, '✅ Post yuborildi!' if ok else '❌ Yangi yangilik topilmadi (yoki kvota tugagan).')
 
         elif text == '/stat':
             cnt, avg = get_stats()
-            tg_send(chat_id, f'📊 Bazada: {cnt} ta yangilik\nO\'rtacha ball: {avg}')
+            used, limit = get_today_api_calls(), DAILY_API_LIMIT
+            tg_send(chat_id, f'📊 Bazada: {cnt} ta yangilik\nO\'rtacha ball: {avg}\n\n🔋 Bugungi API: {used}/{limit}')
 
         elif text == '/clearcache':
             if not is_admin(chat_id):
@@ -249,10 +282,15 @@ def handle_update(update: dict) -> None:
         elif text and not text.startswith('/'):
             if not is_admin(chat_id):
                 return
+            ok_quota, used, limit = _quota_available()
+            if not ok_quota:
+                tg_send(chat_id, f'⛔ Bugungi API byudjeti tugadi ({used}/{limit}). Ertaga (Pacific vaqti bo\'yicha) tiklanadi.')
+                return
             tg_send(chat_id, '⏳ 3 agent ishlayapti...')
             try:
                 article = {'title': text, 'description': '', 'url': None, 'score': 100}
                 post = generate_post(article)
+                increment_api_calls(CALLS_PER_POST)
                 pending[chat_id] = {'text': post, 'image_url': None}
                 tg_send(chat_id, f'Ko\'rib chiqing:\n\n{post}')
                 tg_send(chat_id, 'Tasdiqlang:',
@@ -262,6 +300,7 @@ def handle_update(update: dict) -> None:
                             'one_time_keyboard': True,
                         })
             except Exception as e:
+                increment_api_calls(CALLS_PER_POST)
                 log.error(f'[Bot] Post yaratish xatosi: {e}')
                 tg_send(chat_id, f'❌ Xatolik: {e}')
 
@@ -364,7 +403,7 @@ def news_loop() -> None:
 # ── Entry point ───────────────────────────────────────────
 if __name__ == '__main__':
     init_db()
-    log.info(f'[Server] Port {PORT} da ishga tushdi | Admin IDlar: {ADMIN_IDS}')
+    log.info(f'[Server] Port {PORT} da ishga tushdi | Admin IDlar: {ADMIN_IDS} | Kunlik API byudjeti: {DAILY_API_LIMIT}')
     threading.Thread(target=news_loop, daemon=True).start()
     server = HTTPServer(('0.0.0.0', PORT), WebhookHandler)
     try:
