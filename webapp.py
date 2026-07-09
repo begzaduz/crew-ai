@@ -61,7 +61,7 @@ HTML_PAGE = """<!DOCTYPE html>
   .news-thumb {
     flex-shrink: 0;
     align-self: stretch;
-    width: 100px;
+    width: 118px;
     background: #243357 center / cover no-repeat;
   }
   .news-thumb.no-image {
@@ -79,12 +79,12 @@ HTML_PAGE = """<!DOCTYPE html>
   }
 
   .news-title {
-    font-size: 15.5px;
+    font-size: 15px;
     font-weight: 700;
-    line-height: 1.3;
+    line-height: 1.32;
     color: #ffffff;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
