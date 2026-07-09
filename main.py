@@ -309,6 +309,10 @@ def handle_update(update: dict) -> None:
 
 
 # ── Webhook + Mini App HTTP handler ───────────────────────
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    """Har bir so'rovni alohida thread'da qayta ishlaydi — Mini App va
+    Telegram webhook so'rovlari bir-birini bloklamasligi uchun."""
+    daemon_threads = True
 class WebhookHandler(BaseHTTPRequestHandler):
     def _json(self, data, status: int = 200) -> None:
         body = json.dumps(data, default=str, ensure_ascii=False).encode('utf-8')
@@ -405,7 +409,7 @@ if __name__ == '__main__':
     init_db()
     log.info(f'[Server] Port {PORT} da ishga tushdi | Admin IDlar: {ADMIN_IDS} | Kunlik API byudjeti: {DAILY_API_LIMIT}')
     threading.Thread(target=news_loop, daemon=True).start()
-    server = HTTPServer(('0.0.0.0', PORT), WebhookHandler)
+    server = ThreadingHTTPServer(('0.0.0.0', PORT), WebhookHandler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
