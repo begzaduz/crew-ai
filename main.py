@@ -173,7 +173,12 @@ def auto_news_post() -> bool:
                 mark_processed(article['url'], article['title'], article['score'])
                 continue
 
-            if not post or len(post.strip()) < 50:
+            # YANGI: generate_post None qaytarsa — Editor postni rad etdi
+            # yoki JSON javobni tushunolmadi (parsing xato). Bu holatda
+            # post HECH QACHON kanalga yuborilmaydi — faqat maqola qayta
+            # ishlangan deb belgilanadi va keyingisiga o'tiladi.
+            if post is None:
+                log.warning(f'[Auto] Editor rad etdi/tekshira olmadi, o\'tkazib yuborildi: {article["title"][:60]}')
                 mark_processed(article['url'], article['title'], article['score'])
                 continue
 
@@ -291,18 +296,28 @@ def handle_update(update: dict) -> None:
                 article = {'title': text, 'description': '', 'url': None, 'score': 100}
                 post = generate_post(article)
                 increment_api_calls(CALLS_PER_POST)
-                pending[chat_id] = {'text': post, 'image_url': None}
-                tg_send(chat_id, f'Ko\'rib chiqing:\n\n{post}')
-                tg_send(chat_id, 'Tasdiqlang:',
-                        reply_markup={
-                            'keyboard': [['Yuborish'], ['Bekor']],
-                            'resize_keyboard': True,
-                            'one_time_keyboard': True,
-                        })
             except Exception as e:
                 increment_api_calls(CALLS_PER_POST)
                 log.error(f'[Bot] Post yaratish xatosi: {e}')
                 tg_send(chat_id, f'❌ Xatolik: {e}')
+                return
+
+            # YANGI: Editor postni tasdiqlamadi (yoki JSON javobni tushunolmadi).
+            # Tekshirilmagan post foydalanuvchiga ham "tayyor" sifatida
+            # ko'rsatilmaydi — buni yashirin xato deb hisoblaymiz.
+            if post is None:
+                tg_send(chat_id, '❌ Editor postni tasdiqlamadi (yoki tekshira olmadi). '
+                                  'Matnni biroz o\'zgartirib qayta yuboring.')
+                return
+
+            pending[chat_id] = {'text': post, 'image_url': None}
+            tg_send(chat_id, f'Ko\'rib chiqing:\n\n{post}')
+            tg_send(chat_id, 'Tasdiqlang:',
+                    reply_markup={
+                        'keyboard': [['Yuborish'], ['Bekor']],
+                        'resize_keyboard': True,
+                        'one_time_keyboard': True,
+                    })
 
     except Exception as e:
         log.error(f'[Bot] handle_update kutilmagan xato: {e}')
