@@ -1,4 +1,5 @@
 import re
+import json
 import time
 import logging
 
@@ -63,8 +64,33 @@ def apply_names(text: str) -> str:
 
 
 # ── Gemini API — kvota tejash uchun retry o'chirilgan ─────
+def _generate(system_prompt: str, user_prompt: str, temperature: float,
+               max_tokens: int, json_mode: bool) -> str:
+    """Bitta Gemini so'rovini bajaradi. json_mode=True bo'lsa, Gemini'dan
+    faqat valid JSON qaytarishni majburlaydi (response_mime_type orqali) —
+    Editor agent uchun ishlatiladi, chunki matn ichidan 'APPROVED' kabi
+    so'zlarni qidirish (eski usul) yolg'on-musbat va aniqlanmagan javob
+    holatlariga moyil edi."""
+    config_kwargs: dict = dict(
+        system_instruction=system_prompt,
+        temperature=temperature,
+        max_output_tokens=max_tokens,
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
+    )
+    if json_mode:
+        config_kwargs['response_mime_type'] = 'application/json'
+
+    resp = gemini_client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=user_prompt,
+        config=types.GenerateContentConfig(**config_kwargs),
+    )
+    return (resp.text or '').strip()
+
+
 def groq_call(system_prompt: str, user_prompt: str,
-              temperature: float = 0.4, max_tokens: int = 700) -> str:
+              temperature: float = 0.4, max_tokens: int = 700,
+              json_mode: bool = False) -> str:
     """
     Gemini ga so'rov.
     RPD (kunlik) limit juda kichik bo'lgani uchun 429/RESOURCE_EXHAUSTED
@@ -74,19 +100,12 @@ def groq_call(system_prompt: str, user_prompt: str,
     qayta urinadi, chunki bu kvotaga aloqasi yo'q, tarmoq/server muammosi.
     Funksiya nomi 'groq_call' saqlanib qoldi — pastdagi agentlar shu nomni
     chaqiradi, ularga tegmaslik uchun.
+
+    json_mode=True bo'lsa, javob response_mime_type='application/json'
+    bilan so'raladi (Editor agent buni ishlatadi).
     """
     try:
-        resp = gemini_client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=user_prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                temperature=temperature,
-                max_output_tokens=max_tokens,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
-            ),
-        )
-        return (resp.text or '').strip()
+        return _generate(system_prompt, user_prompt, temperature, max_tokens, json_mode)
 
     except ClientError as e:
         is_rate_limit = '429' in str(e) or 'RESOURCE_EXHAUSTED' in str(e)
@@ -100,17 +119,7 @@ def groq_call(system_prompt: str, user_prompt: str,
         log.warning('[Gemini] Server xato. 15s kutib 1 marta qayta urinamiz...')
         time.sleep(15)
         try:
-            resp = gemini_client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=user_prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    temperature=temperature,
-                    max_output_tokens=max_tokens,
-                    thinking_config=types.ThinkingConfig(thinking_budget=0),
-                ),
-            )
-            return (resp.text or '').strip()
+            return _generate(system_prompt, user_prompt, temperature, max_tokens, json_mode)
         except Exception as e2:
             log.error(f'[Gemini] Server xato — qayta urinishdan keyin ham: {e2}')
             raise
@@ -310,9 +319,16 @@ def writer_agent(article: dict, facts: str) -> str:
 
 
 # ── Agent 3: Editor ───────────────────────────────────────
-EDITOR_PROMPT = """Sen qattiq o'zbek sport muharririsan. Postni tekshir:
+# YANGI: Editor endi erkin matn o'rniga QAT'IY JSON formatda javob beradi
+# (Gemini response_mime_type='application/json' orqali majburlanadi).
+# Bu eski 'APPROVED' in result / 'FIXED:' in result kabi satr-ichidan-qidirish
+# usulini almashtiradi — u usul ikkita jiddiy kamchilikka ega edi:
+#   1) 'APPROVED' so'zi tasodifiy boshqa kontekstda chiqsa — yolg'on-musbat.
+#   2) Javob na 'APPROVED' na 'FIXED:' ni o'z ichiga olmasa, tekshirilmagan
+#      original post baribir kanalga yuborilar edi (silent failure).
+EDITOR_PROMPT = """Sen qattiq o'zbek sport muharririsan. Quyidagi Telegram postni tekshir:
 
-1. Sarlavha VA matn 100% o'zbek tilidami? (Klub/futbolchi ismidan tashqari BITTA HAM ingliz so'z yoki ibora bo'lmasligi kerak — bo'lsa, bu jiddiy xato, REJECTED qil)
+1. Sarlavha VA matn 100% o'zbek tilidami? (Klub/futbolchi ismidan tashqari BITTA HAM ingliz so'z yoki ibora bo'lmasligi kerak — bo'lsa, bu jiddiy xato)
 2. Sarlavhadan keyin bo'sh qator bormi?
 3. Har paragraf orasida bo'sh qator bormi?
 4. Har paragraf 1-2 jumladan iborat?
@@ -321,39 +337,121 @@ EDITOR_PROMPT = """Sen qattiq o'zbek sport muharririsan. Postni tekshir:
 7. @Inglizfutbol bilan tugadimi?
 8. Sarlavha 8 so'zdan oshmaydimi?
 
-Agar HAMMA tekshiruvdan o'tsa: APPROVED yoz
-Agar muammo bo'lsa: REJECTED: [sabab] yoz, keyin tuzatilgan versiyani FIXED: dan keyin yoz"""
+JAVOB FORMATI (QAT'IY — boshqa hech narsa yozma, faqat quyidagi JSON):
 
-def editor_agent(post: str, title: str) -> str:
-    result = groq_call(
+{
+  "approved": true yoki false,
+  "reason": "approved=false bo'lsa aniq sabab (o'zbekcha, qisqa, 1 jumla); approved=true bo'lsa bo'sh satr",
+  "fixed_text": "agar tuzatish mumkin bo'lsa — postning TO'LIQ tuzatilgan matni (boshidan @Inglizfutbol gacha); aks holda null"
+}
+
+Qoidalar:
+- Barcha 8 tekshiruvdan o'tsa: approved=true, fixed_text=null
+- Kichik xato bo'lsa va tuzatish mumkin bo'lsa: approved=false, fixed_text ga TO'LIQ tuzatilgan postni yoz
+- Post tuzatib bo'lmaydigan darajada buzilgan/noto'g'ri bo'lsa: approved=false, fixed_text=null
+- fixed_text har doim postning TO'LIQ matni bo'lishi kerak, faqat o'zgargan qism emas
+- JSON tashqarisida hech qanday matn, izoh yoki ``` belgisi yozma"""
+
+
+def _parse_editor_json(raw: str) -> dict | None:
+    """Editor javobini xavfsiz JSON'ga aylantiradi.
+    Model ba'zan ```json ... ``` bilan o'rab yuborishi mumkin — shu holatni
+    ham hisobga oladi. Har qanday parsing xatosida None qaytaradi (bu holat
+    editor_agent tomonidan 'rad etildi' sifatida talqin qilinadi)."""
+    if not raw:
+        return None
+    text = raw.strip()
+    if text.startswith('```'):
+        text = re.sub(r'^```(?:json)?\s*', '', text)
+        text = re.sub(r'\s*```$', '', text)
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def editor_agent(post: str, title: str) -> dict:
+    """
+    Postni Gemini orqali strukturaviy JSON formatda tekshiradi.
+    Qaytaradi: {"approved": bool, "reason": str, "fixed_text": str|None}
+
+    approved=False bo'lsa — chaqiruvchi tomon (generate_post) postni
+    HECH QACHON kanalga yubormasligi kerak. Bu quyidagi barcha holatlar
+    uchun amal qiladi: Editor rad etdi, JSON parse bo'lmadi, yoki javob
+    kutilgan sxemaga mos kelmadi. Xavfsizlik tomoni har doim "rad etish"
+    — noaniq holatda ham post yuborilmaydi.
+    """
+    raw = groq_call(
         EDITOR_PROMPT,
         f"Review this Uzbek post about: {title}\n\nPOST:\n{post}",
-        temperature=0.2, max_tokens=700,
+        temperature=0.1, max_tokens=800,
+        json_mode=True,
     )
-    if 'APPROVED' in result:
+
+    data = _parse_editor_json(raw)
+    if data is None:
+        log.error(f'[Editor] JSON parse xato. Xom javob: {raw[:200]!r}')
+        return {'approved': False, 'reason': 'editor_parse_error', 'fixed_text': None}
+
+    approved = data.get('approved')
+    reason = str(data.get('reason') or '').strip()
+    fixed_text = data.get('fixed_text')
+
+    if not isinstance(approved, bool):
+        log.error(f'[Editor] "approved" maydoni yaroqsiz yoki yo\'q: {data!r}')
+        return {'approved': False, 'reason': 'editor_schema_error', 'fixed_text': None}
+
+    if approved:
         log.info('[Editor] ✓ Tasdiqlandi')
-        return post
-    elif 'FIXED:' in result:
-        fixed = result.split('FIXED:')[-1].strip()
-        log.info('[Editor] ✓ Tuzatildi')
-        return fixed
-    else:
-        log.warning(f'[Editor] Natija noaniq: {result[:80]}')
-        return post
+        return {'approved': True, 'reason': '', 'fixed_text': None}
+
+    if isinstance(fixed_text, str) and len(fixed_text.strip()) >= 50:
+        log.info(f'[Editor] ✓ Tuzatildi ({reason[:60] or "sabab ko\'rsatilmagan"})')
+        return {'approved': True, 'reason': reason, 'fixed_text': fixed_text.strip()}
+
+    log.warning(f'[Editor] ✗ Rad etildi: {reason or "sabab ko\'rsatilmagan"}')
+    return {'approved': False, 'reason': reason or 'unspecified', 'fixed_text': None}
 
 
 # ── Pipeline ──────────────────────────────────────────────
-def generate_post(article: dict) -> str:
+def generate_post(article: dict) -> str | None:
+    """
+    To'liq pipeline: Researcher -> Writer -> Editor -> Validator.
+
+    Qaytaradi:
+        str  — kanalga yuborishga tayyor, to'liq tekshirilgan post
+        None — Editor postni tasdiqlamadi (yoki uni tekshira olmadi),
+               yoki post oxirgi rule-based validatordan o'tmadi.
+               Bu holatda chaqiruvchi tomon (main.py) postni HECH QACHON
+               kanalga yubormasligi va shu maqolani qayta ishlangan deb
+               belgilab, keyingisiga o'tishi kerak.
+
+    Eslatma: avvalgi versiyada Editor/validator rad etsa ham, tekshirilmagan
+    'raw_post' baribir kanalga yuborilar edi (fallback). Bu xavfli edi —
+    endi bunday fallback yo'q: tekshiruvdan o'tmagan post umuman
+    yuborilmaydi.
+    """
     log.info(f'[Pipeline] Boshlandi: {article["title"][:60]}')
 
-    facts    = researcher_agent(article)
+    facts = researcher_agent(article)
     raw_post = writer_agent(article, facts)
-    edited   = editor_agent(raw_post, article['title'])
 
-    post = ensure_channel_tag(edited)
+    editor_result = editor_agent(raw_post, article['title'])
+
+    if not editor_result['approved']:
+        log.warning(
+            f'[Pipeline] ✗ Editor postni rad etdi, YUBORILMAYDI. '
+            f'Sabab: {editor_result["reason"][:150]}'
+        )
+        return None
+
+    final_text = editor_result['fixed_text'] or raw_post
+    post = ensure_channel_tag(final_text)
+
     ok, reason = validate_post(post)
     if not ok:
-        log.warning(f'[Validator] Rad: {reason} — original post qaytarildi')
-        post = ensure_channel_tag(raw_post)
+        log.warning(f'[Pipeline] ✗ Rule-based validator rad etdi: {reason} — YUBORILMAYDI')
+        return None
 
     return apply_names(post)
