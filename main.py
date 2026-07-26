@@ -18,6 +18,7 @@ from feeds import fetch_news, fetch_og_image
 from agents import generate_post
 from api_football import fetch_standings, fetch_matches_by_date
 from webapp import HTML_PAGE
+from studio_schema import init_studio_schema, seed_ingliz_futboli
 
 log = logging.getLogger(__name__)
 
@@ -422,6 +423,8 @@ def news_loop() -> None:
 # ── Entry point ───────────────────────────────────────────
 if __name__ == '__main__':
     init_db()
+    init_studio_schema()
+    seed_ingliz_futboli()
     log.info(f'[Server] Port {PORT} da ishga tushdi | Admin IDlar: {ADMIN_IDS} | Kunlik API byudjeti: {DAILY_API_LIMIT}')
     threading.Thread(target=news_loop, daemon=True).start()
     server = ThreadingHTTPServer(('0.0.0.0', PORT), WebhookHandler)
