@@ -19,6 +19,7 @@ from agents import generate_post
 from api_football import fetch_standings, fetch_matches_by_date
 from webapp import HTML_PAGE
 from studio_schema import init_studio_schema, seed_ingliz_futboli
+from studio_api import handle_get as studio_get, handle_post as studio_post
 
 log = logging.getLogger(__name__)
 
@@ -339,6 +340,19 @@ class WebhookHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
+        parsed = urlparse(self.path)
+        if parsed.path.startswith('/api/studio/'):
+            length = int(self.headers.get('Content-Length', 0))
+            raw = self.rfile.read(length) if length else b'{}'
+            try:
+                body = json.loads(raw or b'{}')
+            except Exception:
+                self._json({'error': 'yaroqsiz JSON'}, status=400)
+                return
+            status, data = studio_post(parsed.path, body, self.headers)
+            self._json(data, status=status)
+            return
+
         incoming_secret = self.headers.get('X-Telegram-Bot-Api-Secret-Token', '')
         if not hmac.compare_digest(incoming_secret, WEBHOOK_SECRET):
             log.warning('[Webhook] Noto\'g\'ri yoki yo\'q secret token — so\'rov rad etildi.')
@@ -361,6 +375,11 @@ class WebhookHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+        if path.startswith('/api/studio/'):
+            status, data = studio_get(path, parse_qs(parsed.query), self.headers)
+            self._json(data, status=status)
+            return
 
         if path == '/api/posts':
             try:
