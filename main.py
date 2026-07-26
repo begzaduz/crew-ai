@@ -20,6 +20,7 @@ from api_football import fetch_standings, fetch_matches_by_date
 from webapp import HTML_PAGE
 from studio_schema import init_studio_schema, seed_ingliz_futboli
 from studio_api import handle_get as studio_get, handle_post as studio_post
+from studio_ui import HTML_STUDIO_PAGE
 
 log = logging.getLogger(__name__)
 
@@ -375,6 +376,13 @@ class WebhookHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+        if path in ('/studio', '/studio/'):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(HTML_STUDIO_PAGE.encode('utf-8'))
+            return
 
         if path.startswith('/api/studio/'):
             status, data = studio_get(path, parse_qs(parsed.query), self.headers)
