@@ -338,6 +338,29 @@ def set_asset_status(asset_id: int, status: str, reviewer: str, notes: str = '')
         _put_conn(conn)
 
 
+def update_asset_content(asset_id: int, title: str, content: str,
+                          reviewer: str = 'admin', log_edit: bool = True) -> None:
+    """Admin Navbat'da matnni tahrirlaganda chaqiriladi. Xohlasa,
+    tekshiruv tarixiga 'edited' yozuvi ham qo'shiladi — shunda kim
+    nimani o'zgartirgani kuzatilib boradi."""
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                'UPDATE assets SET title = %s, content = %s WHERE id = %s',
+                (title, content, asset_id),
+            )
+            if log_edit:
+                cur.execute(
+                    '''INSERT INTO reviews (asset_id, reviewer, decision, notes)
+                       VALUES (%s, %s, %s, %s)''',
+                    (asset_id, reviewer, 'edited', 'Matn admin tomonidan tahrirlandi'),
+                )
+        conn.commit()
+    finally:
+        _put_conn(conn)
+
+
 # ═══════════════════════════════════════════════════════════
 #  OUTPUTS  (Chiqishlar)
 # ═══════════════════════════════════════════════════════════
