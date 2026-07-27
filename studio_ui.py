@@ -243,6 +243,13 @@ let TOKEN = localStorage.getItem('studio_token') || '';
 let ADMIN_NAME = localStorage.getItem('studio_admin_name') || 'admin';
 let PROJECTS = [];
 let CURRENT = null;
+let ASSETS_BY_ID = {};
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.innerText = str || '';
+  return div.innerHTML;
+}
 
 function api(path, opts) {
   opts = opts || {};
@@ -418,17 +425,54 @@ function renderWorkflow(wf) {
 function renderQueue(drafts) {
   const el = document.getElementById('sub-queue');
   if (!drafts.length) { el.innerHTML = '<div class="empty-note">Navbat bo\\'sh — hali tekshiruv kutayotgan kontent yo\\'q.</div>'; return; }
+  drafts.forEach(a => ASSETS_BY_ID[a.id] = a);
   el.innerHTML = drafts.map(a => `
-    <div class="queue-card">
+    <div class="queue-card" id="qcard-${a.id}">
       <div class="queue-top"><span class="queue-score">score: ${a.score}</span></div>
-      <div class="queue-title">${a.title || '(sarlavhasiz)'}</div>
-      <div class="queue-excerpt">${(a.content || '').slice(0, 220)}</div>
-      <div class="queue-actions">
-        <button class="btn btn-approve" onclick="reviewAsset(${a.id}, 'approved')">Tasdiqlash</button>
-        <button class="btn btn-reject" onclick="reviewAsset(${a.id}, 'rejected')">Rad etish</button>
+
+      <div class="q-view" id="qview-${a.id}">
+        <div class="queue-title">${escapeHtml(a.title) || '(sarlavhasiz)'}</div>
+        <div class="queue-excerpt">${escapeHtml((a.content || '').slice(0, 220))}</div>
+        <div class="queue-actions">
+          <button class="btn btn-approve" onclick="reviewAsset(${a.id}, 'approved')">Tasdiqlash</button>
+          <button class="btn btn-reject" onclick="reviewAsset(${a.id}, 'rejected')">Rad etish</button>
+          <button class="btn btn-reject" onclick="startEdit(${a.id})">Tahrirlash</button>
+        </div>
+      </div>
+
+      <div class="q-edit" id="qedit-${a.id}" style="display:none">
+        <input type="text" class="edit-title" id="edit-title-${a.id}" value="${escapeHtml(a.title)}"
+               style="width:100%; margin-bottom:8px; background:var(--navy-deep); border:1px solid var(--navy-border); color:var(--ink); padding:8px 10px; border-radius:6px; font-size:13px; font-weight:600;">
+        <textarea class="edit-content" id="edit-content-${a.id}" rows="8"
+               style="width:100%; margin-bottom:10px; background:var(--navy-deep); border:1px solid var(--navy-border); color:var(--ink); padding:8px 10px; border-radius:6px; font-size:12.5px; line-height:1.5; font-family:'Inter'; resize:vertical;">${escapeHtml(a.content)}</textarea>
+        <div class="queue-actions">
+          <button class="btn btn-approve" onclick="saveEdit(${a.id}, true)">Saqlash va tasdiqlash</button>
+          <button class="btn btn-reject" onclick="saveEdit(${a.id}, false)">Faqat saqlash</button>
+          <button class="btn btn-reject" onclick="cancelEdit(${a.id})">Bekor qilish</button>
+        </div>
       </div>
     </div>
   `).join('');
+}
+
+function startEdit(id) {
+  document.getElementById('qview-' + id).style.display = 'none';
+  document.getElementById('qedit-' + id).style.display = 'block';
+}
+
+function cancelEdit(id) {
+  document.getElementById('qedit-' + id).style.display = 'none';
+  document.getElementById('qview-' + id).style.display = 'block';
+}
+
+function saveEdit(id, approveAfter) {
+  const title = document.getElementById('edit-title-' + id).value.trim();
+  const content = document.getElementById('edit-content-' + id).value.trim();
+  api('/api/studio/assets/update', {method:'POST', body: JSON.stringify({
+    asset_id: id, title, content, reviewer: ADMIN_NAME, approve_after: approveAfter,
+  })})
+    .then(() => selectProject(CURRENT.slug, true))
+    .catch(err => alert('Xato: ' + err.message));
 }
 
 function reviewAsset(id, decision) {
