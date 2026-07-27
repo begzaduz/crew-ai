@@ -159,6 +159,7 @@ HTML_STUDIO_PAGE = """<!DOCTYPE html>
     <div class="brand"><span class="dot"></span><span>studiolab</span></div>
     <h2>Boshqaruvga kirish</h2>
     <p>Admin token'ingizni kiriting. Bu token Railway'dagi STUDIO_ADMIN_TOKEN o'zgaruvchisida saqlangan.</p>
+    <input type="text" id="name-input" placeholder="Ismingiz (masalan Begzad)">
     <input type="password" id="token-input" placeholder="Token..." autofocus>
     <button onclick="doLogin()">Kirish</button>
     <div class="login-error" id="login-error">Token noto'g'ri yoki server bilan bog'lanib bo'lmadi.</div>
@@ -239,6 +240,7 @@ HTML_STUDIO_PAGE = """<!DOCTYPE html>
 
 <script>
 let TOKEN = localStorage.getItem('studio_token') || '';
+let ADMIN_NAME = localStorage.getItem('studio_admin_name') || 'admin';
 let PROJECTS = [];
 let CURRENT = null;
 
@@ -247,23 +249,34 @@ function api(path, opts) {
   opts.headers = Object.assign({'Content-Type': 'application/json'}, opts.headers || {});
   if (TOKEN) opts.headers['Authorization'] = 'Bearer ' + TOKEN;
   return fetch(path, opts).then(async res => {
-    if (res.status === 401) { logout(); throw new Error('unauthorized'); }
+    if (res.status === 401) {
+      logout('Token noto\\'g\\'ri yoki muddati o\\'tgan. Qaytadan kiriting.');
+      throw new Error('unauthorized');
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || ('HTTP ' + res.status));
+    }
     return res.json();
   });
 }
 
 function doLogin() {
   TOKEN = document.getElementById('token-input').value.trim();
+  ADMIN_NAME = document.getElementById('name-input').value.trim() || 'admin';
   localStorage.setItem('studio_token', TOKEN);
+  localStorage.setItem('studio_admin_name', ADMIN_NAME);
   boot();
 }
 
-function logout() {
+function logout(message) {
   localStorage.removeItem('studio_token');
   TOKEN = '';
   document.getElementById('shell').classList.remove('ready');
   document.getElementById('login-screen').style.display = 'flex';
-  document.getElementById('login-error').style.display = 'block';
+  const err = document.getElementById('login-error');
+  if (message) err.textContent = message;
+  err.style.display = 'block';
 }
 
 function boot() {
@@ -276,7 +289,9 @@ function boot() {
     const d = new Date();
     document.getElementById('today-line').textContent = d.toLocaleDateString('uz-UZ', {weekday:'long', day:'numeric', month:'long'});
     if (projects.length) selectProject(projects[0].slug, false);
-  }).catch(() => {});
+  }).catch(err => {
+    if (err.message !== 'unauthorized') logout('Ulanishda xato: ' + err.message);
+  });
 }
 
 function renderRail() {
@@ -308,29 +323,40 @@ function showDashboard() {
 }
 
 async function selectProject(slug, switchView) {
-  const proj = await api('/api/studio/project?slug=' + encodeURIComponent(slug));
-  CURRENT = proj;
-  document.querySelectorAll('.rail-item[data-slug]').forEach(r => r.classList.toggle('active', r.dataset.slug === slug));
-
-  const [sources, queueAll, outputs, workflow] = await Promise.all([
-    api('/api/studio/sources?project_id=' + proj.id),
-    api('/api/studio/queue?project_id=' + proj.id),
-    api('/api/studio/outputs?project_id=' + proj.id),
-    api('/api/studio/workflow?project_id=' + proj.id).catch(() => null),
-  ]);
-
-  renderPipeline(proj, queueAll);
-  document.getElementById('proj-title').textContent = proj.name;
-  document.getElementById('queue-count').textContent = '· ' + queueAll.filter(a => a.status === 'draft').length;
-  renderSources(sources);
-  renderWorkflow(workflow);
-  renderQueue(queueAll.filter(a => a.status === 'draft'));
-  renderOutputs(outputs);
-
   if (switchView) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.getElementById('view-project').classList.add('active');
-    document.getElementById('crumb').innerHTML = 'Loyihalar / <b>' + proj.name + '</b>';
+    document.getElementById('proj-title').textContent = 'Yuklanmoqda...';
+  }
+  try {
+    const proj = await api('/api/studio/project?slug=' + encodeURIComponent(slug));
+    CURRENT = proj;
+    document.querySelectorAll('.rail-item[data-slug]').forEach(r => r.classList.toggle('active', r.dataset.slug === slug));
+
+    const [sources, queueAll, outputs, workflow] = await Promise.all([
+      api('/api/studio/sources?project_id=' + proj.id),
+      api('/api/studio/queue?project_id=' + proj.id),
+      api('/api/studio/outputs?project_id=' + proj.id),
+      api('/api/studio/workflow?project_id=' + proj.id).catch(() => null),
+    ]);
+
+    renderPipeline(proj, queueAll);
+    document.getElementById('proj-title').textContent = proj.name;
+    document.getElementById('queue-count').textContent = '· ' + queueAll.filter(a => a.status === 'draft').length;
+    renderSources(sources);
+    renderWorkflow(workflow);
+    renderQueue(queueAll.filter(a => a.status === 'draft'));
+    renderOutputs(outputs);
+
+    if (switchView) {
+      document.getElementById('crumb').innerHTML = 'Loyihalar / <b>' + proj.name + '</b>';
+    }
+  } catch (err) {
+    if (err.message === 'unauthorized') return;
+    document.getElementById('proj-title').textContent = 'Xato';
+    ['sub-sources','sub-workflow','sub-queue','sub-outputs'].forEach(id => {
+      document.getElementById(id).innerHTML = '<div class="empty-note" style="color:var(--coral)">Yuklashda xato: ' + err.message + '</div>';
+    });
   }
 }
 
@@ -370,7 +396,8 @@ function renderSources(sources) {
 
 function toggleSource(id, newState, el) {
   api('/api/studio/sources/toggle', {method:'POST', body: JSON.stringify({id, enabled:newState})})
-    .then(() => el.classList.toggle('off'));
+    .then(() => el.classList.toggle('off'))
+    .catch(err => alert('Xato: ' + err.message));
 }
 
 function renderWorkflow(wf) {
@@ -405,8 +432,9 @@ function renderQueue(drafts) {
 }
 
 function reviewAsset(id, decision) {
-  api('/api/studio/assets/review', {method:'POST', body: JSON.stringify({asset_id:id, decision, reviewer:'admin'})})
-    .then(() => selectProject(CURRENT.slug, true));
+  api('/api/studio/assets/review', {method:'POST', body: JSON.stringify({asset_id:id, decision, reviewer:ADMIN_NAME})})
+    .then(() => selectProject(CURRENT.slug, true))
+    .catch(err => alert('Xato: ' + err.message));
 }
 
 function renderOutputs(outputs) {
@@ -432,7 +460,8 @@ function renderOutputs(outputs) {
 
 function toggleOutput(id, newState, el) {
   api('/api/studio/outputs/toggle', {method:'POST', body: JSON.stringify({id, enabled:newState})})
-    .then(() => el.classList.toggle('off'));
+    .then(() => el.classList.toggle('off'))
+    .catch(err => alert('Xato: ' + err.message));
 }
 
 function showSub(name, el) {
