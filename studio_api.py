@@ -31,19 +31,20 @@ log = logging.getLogger(__name__)
 STUDIO_ADMIN_TOKEN = os.getenv('STUDIO_ADMIN_TOKEN', '')
 
 if not STUDIO_ADMIN_TOKEN:
-    log.warning(
-        '[Studio API] STUDIO_ADMIN_TOKEN .env\'da o\'rnatilmagan — '
-        'dashboard API hozircha HIMOYASIZ rejimda ishlayapti. '
-        'Ishlab chiqarishga chiqarishdan oldin buni albatta o\'rnating.'
+    log.error(
+        '[Studio API] STUDIO_ADMIN_TOKEN .env\'da o\'rnatilmagan! '
+        'Xavfsizlik uchun dashboard API endi FAIL-CLOSED ishlaydi — '
+        'token o\'rnatilmaguncha barcha so\'rovlar rad etiladi (401). '
+        'Railway → Variables → STUDIO_ADMIN_TOKEN qo\'shing.'
     )
 
 
 def _check_auth(headers) -> bool:
-    """STUDIO_ADMIN_TOKEN o'rnatilmagan bo'lsa, dev-rejimda o'tkazib
-    yuboradi (yuqorida ogohlantirish bilan). O'rnatilgan bo'lsa,
-    Authorization: Bearer <token> ni qat'iy tekshiradi."""
+    """Token yo'q bo'lsa — HAR DOIM rad etadi (fail-closed). Eski
+    "token yo'q bo'lsa hammaga ochiq" xatti-harakati olib tashlandi,
+    chunki bu real xavfsizlik teshigi edi."""
     if not STUDIO_ADMIN_TOKEN:
-        return True
+        return False
     auth_header = headers.get('Authorization', '')
     token = auth_header.replace('Bearer ', '').strip()
     return hmac.compare_digest(token, STUDIO_ADMIN_TOKEN)
@@ -52,9 +53,10 @@ def _check_auth(headers) -> bool:
 def _require_project_id(query: dict) -> int | None:
     raw = (query.get('project_id') or [''])[0]
     try:
-        return int(raw)
+        pid = int(raw)
     except (TypeError, ValueError):
         return None
+    return pid if pid > 0 else None
 
 
 # ═══════════════════════════════════════════════════════════
