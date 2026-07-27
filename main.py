@@ -15,7 +15,9 @@ from database import (
     save_post, get_recent_posts, get_today_api_calls, increment_api_calls,
 )
 from feeds import fetch_news, fetch_og_image
-from agents import generate_post
+from registry import get_workflow
+
+news_workflow = get_workflow("rss_news")
 from api_football import fetch_standings, fetch_matches_by_date
 from webapp import HTML_PAGE
 from studio_schema import init_studio_schema, seed_ingliz_futboli
@@ -208,7 +210,7 @@ pending: dict[int, dict] = {}
 
 
 # ── Update handler ────────────────────────────────────────
-def handle_update(update: dict) -> None:
+def (update: dict) -> None:
     msg = update.get('message')
     if not msg:
         return
@@ -297,7 +299,7 @@ def handle_update(update: dict) -> None:
             tg_send(chat_id, '⏳ 3 agent ishlayapti...')
             try:
                 article = {'title': text, 'description': '', 'url': None, 'score': 100}
-                post = generate_post(article)
+post = news_workflow.run(article)
                 increment_api_calls(CALLS_PER_POST)
             except Exception as e:
                 increment_api_calls(CALLS_PER_POST)
@@ -323,7 +325,7 @@ def handle_update(update: dict) -> None:
                     })
 
     except Exception as e:
-        log.error(f'[Bot] handle_update kutilmagan xato: {e}')
+        log.error(f'[Bot]  kutilmagan xato: {e}')
 
 
 # ── Webhook + Mini App HTTP handler ───────────────────────
@@ -369,7 +371,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
         self.wfile.write(b'OK')
         try:
             update = json.loads(body)
-            threading.Thread(target=handle_update, args=(update,), daemon=True).start()
+            threading.Thread(target=, args=(update,), daemon=True).start()
         except Exception as e:
             log.error(f'[Webhook] {e}')
 
@@ -442,6 +444,7 @@ def news_loop() -> None:
     while True:
         try:
             auto_news_post()
+            post = news_workflow.run(article)
         except Exception as e:
             log.error(f'[Loop] {e}')
         time.sleep(INTERVAL)
