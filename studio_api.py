@@ -22,7 +22,7 @@ from studio_schema import (
     list_projects, get_project_by_slug,
     list_data_sources, set_data_source_enabled,
     get_workflow, update_workflow_config,
-    list_assets, set_asset_status,
+    list_assets, set_asset_status, update_asset_content,
     list_outputs, set_output_enabled,
 )
 
@@ -128,6 +128,19 @@ def handle_post(path: str, body: dict, headers) -> tuple[int, dict]:
         if path == '/api/studio/workflow/update':
             wf_id = int(body['workflow_id'])
             update_workflow_config(wf_id, body['config'])
+            return 200, {'ok': True}
+
+        if path == '/api/studio/assets/update':
+            update_asset_content(
+                asset_id=int(body['asset_id']),
+                title=body.get('title', ''),
+                content=body['content'],
+                reviewer=body.get('reviewer', 'admin'),
+            )
+            if body.get('approve_after'):
+                set_asset_status(int(body['asset_id']), 'approved',
+                                  reviewer=body.get('reviewer', 'admin'),
+                                  notes='Tahrirlangandan keyin tasdiqlandi')
             return 200, {'ok': True}
 
         if path == '/api/studio/assets/review':
