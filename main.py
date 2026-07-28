@@ -164,7 +164,10 @@ def auto_news_post() -> bool:
 
             log.info(f'[Auto] Qayta ishlanmoqda (score:{article["score"]}): {article["title"][:60]}')
             try:
-                post = generate_post(article)
+                # DIQQAT: bu yerda avval 'generate_post(article)' chaqirilar edi —
+                # bu funksiya endi mavjud emas (pipeline workflows/rss_news.py'ga
+                # ko'chirilgan). To'g'ri chaqiruv — news_workflow.run(article).
+                post = news_workflow.run(article)
                 increment_api_calls(CALLS_PER_POST)
             except Exception as e:
                 increment_api_calls(CALLS_PER_POST)
@@ -178,10 +181,10 @@ def auto_news_post() -> bool:
                 mark_processed(article['url'], article['title'], article['score'])
                 continue
 
-            # YANGI: generate_post None qaytarsa — Editor postni rad etdi
-            # yoki JSON javobni tushunolmadi (parsing xato). Bu holatda
-            # post HECH QACHON kanalga yuborilmaydi — faqat maqola qayta
-            # ishlangan deb belgilanadi va keyingisiga o'tiladi.
+            # Editor postni rad etsa yoki JSON javobni tushunolmasa,
+            # workflow nazariy jihatdan None qaytarishi mumkin — bu holatda
+            # post HECH QACHON kanalga yuborilmaydi, faqat qayta ishlangan
+            # deb belgilanadi va keyingisiga o'tiladi.
             if post is None:
                 log.warning(f'[Auto] Editor rad etdi/tekshira olmadi, o\'tkazib yuborildi: {article["title"][:60]}')
                 mark_processed(article['url'], article['title'], article['score'])
@@ -210,7 +213,7 @@ pending: dict[int, dict] = {}
 
 
 # ── Update handler ────────────────────────────────────────
-def (update: dict) -> None:
+def handle_update(update: dict) -> None:
     msg = update.get('message')
     if not msg:
         return
@@ -299,7 +302,7 @@ def (update: dict) -> None:
             tg_send(chat_id, '⏳ 3 agent ishlayapti...')
             try:
                 article = {'title': text, 'description': '', 'url': None, 'score': 100}
-post = news_workflow.run(article)
+                post = news_workflow.run(article)
                 increment_api_calls(CALLS_PER_POST)
             except Exception as e:
                 increment_api_calls(CALLS_PER_POST)
@@ -307,7 +310,7 @@ post = news_workflow.run(article)
                 tg_send(chat_id, f'❌ Xatolik: {e}')
                 return
 
-            # YANGI: Editor postni tasdiqlamadi (yoki JSON javobni tushunolmadi).
+            # Editor postni tasdiqlamadi (yoki JSON javobni tushunolmadi).
             # Tekshirilmagan post foydalanuvchiga ham "tayyor" sifatida
             # ko'rsatilmaydi — buni yashirin xato deb hisoblaymiz.
             if post is None:
@@ -325,7 +328,7 @@ post = news_workflow.run(article)
                     })
 
     except Exception as e:
-        log.error(f'[Bot]  kutilmagan xato: {e}')
+        log.error(f'[Bot] handle_update kutilmagan xato: {e}')
 
 
 # ── Webhook + Mini App HTTP handler ───────────────────────
@@ -333,6 +336,8 @@ class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
     """Har bir so'rovni alohida thread'da qayta ishlaydi — Mini App va
     Telegram webhook so'rovlari bir-birini bloklamasligi uchun."""
     daemon_threads = True
+
+
 class WebhookHandler(BaseHTTPRequestHandler):
     def _json(self, data, status: int = 200) -> None:
         body = json.dumps(data, default=str, ensure_ascii=False).encode('utf-8')
@@ -371,7 +376,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
         self.wfile.write(b'OK')
         try:
             update = json.loads(body)
-            threading.Thread(target=, args=(update,), daemon=True).start()
+            threading.Thread(target=handle_update, args=(update,), daemon=True).start()
         except Exception as e:
             log.error(f'[Webhook] {e}')
 
@@ -444,7 +449,6 @@ def news_loop() -> None:
     while True:
         try:
             auto_news_post()
-            post = news_workflow.run(article)
         except Exception as e:
             log.error(f'[Loop] {e}')
         time.sleep(INTERVAL)
