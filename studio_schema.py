@@ -416,7 +416,7 @@ def seed_ingliz_futboli() -> None:
     o'sha qiymatlarning DB'dagi nusxasi, migratsiya keyingi bosqichda.
     """
     from feeds import RSS_FEEDS
-    from agents import NAMES
+    from workflows.rss_news_vocab import NAMES
 
     project_id = create_project(
         slug='ingliz-futboli',
