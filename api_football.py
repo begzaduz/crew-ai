@@ -2,7 +2,7 @@ import logging
 import requests
 
 from config import FOOTBALL_DATA_KEY
-from agents import apply_names
+from workflows.rss_news_vocab import apply_names
 
 log = logging.getLogger(__name__)
 
