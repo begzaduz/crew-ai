@@ -2,7 +2,7 @@ import logging
 import requests
 
 from config import FOOTBALL_DATA_KEY
-from workflows.rss_news_vocab import apply_names
+from workflows.rss_news import apply_names, DEFAULT_TERMINOLOGY
 
 log = logging.getLogger(__name__)
 
@@ -13,8 +13,10 @@ _HEADERS = {'X-Auth-Token': FOOTBALL_DATA_KEY}
 
 
 def _translate_club(name: str) -> str:
-    """Klub nomini apply_names orqali o'zbekchalashtiradi (mavjud bo'lsa)."""
-    return apply_names(name)
+    """Klub nomini standart terminologiya lug'ati orqali o'zbekchalashtiradi.
+    Eslatma: standings/matches widgetlari hozircha loyihaga bog'liq emas
+    (project_id qabul qilmaydi), shuning uchun DEFAULT_TERMINOLOGY ishlatiladi."""
+    return apply_names(name, DEFAULT_TERMINOLOGY)
 
 
 def fetch_standings() -> list[dict] | None:
