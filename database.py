@@ -332,13 +332,31 @@ def update_workflow_config(project_id: int, patch: dict, wf_type: str = 'rss_new
 
 
 # ── Studio Lab: data_sources (RSS manbalar) ───────────────
+# MUHIM: ushbu jadval avvalroq boshqa kod (studio_schema.py) orqali
+# yaratilgan bo'lib, haqiqiy manzil (url) alohida ustunda emas, balki
+# 'config' JSONB ustuni ichida ({"url": "..."}) saqlanadi, va yoqilgan/
+# o'chirilganligi 'active' emas, 'enabled' ustunida turadi. Quyidagi
+# funksiyalar ANA SHU haqiqiy ustunlar bilan ishlaydi. _normalize_source()
+# har bir qatorga qulaylik uchun tekis 'url' va 'active' kalitlarini
+# qo'shib beradi, shunda dashboard/pipeline kodi ularni to'g'ridan-to'g'ri
+# ishlata oladi.
+def _normalize_source(row: dict) -> dict:
+    row = dict(row)
+    cfg = row.get('config') or {}
+    if not row.get('url'):
+        row['url'] = cfg.get('url', '')
+    if row.get('active') is None:
+        row['active'] = row.get('enabled', True)
+    return row
+
+
 def get_data_sources(project_id: int, active_only: bool = False) -> list[dict]:
     conn = _get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             if active_only:
                 cur.execute(
-                    'SELECT * FROM data_sources WHERE project_id=%s AND active=TRUE ORDER BY id',
+                    'SELECT * FROM data_sources WHERE project_id=%s AND enabled=TRUE ORDER BY id',
                     (project_id,),
                 )
             else:
@@ -346,23 +364,29 @@ def get_data_sources(project_id: int, active_only: bool = False) -> list[dict]:
                     'SELECT * FROM data_sources WHERE project_id=%s ORDER BY id',
                     (project_id,),
                 )
-            return [dict(r) for r in cur.fetchall()]
+            return [_normalize_source(dict(r)) for r in cur.fetchall()]
     finally:
         _put_conn(conn)
 
 
 def add_data_source(project_id: int, url: str, source_type: str = 'rss') -> dict:
+    url = url.strip()
+    try:
+        from urllib.parse import urlparse
+        name = urlparse(url).netloc or url
+    except Exception:
+        name = url
     conn = _get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                '''INSERT INTO data_sources (project_id, url, type)
-                   VALUES (%s, %s, %s) RETURNING *''',
-                (project_id, url.strip(), source_type),
+                '''INSERT INTO data_sources (project_id, type, name, enabled, config)
+                   VALUES (%s, %s, %s, TRUE, %s) RETURNING *''',
+                (project_id, source_type, name, psycopg2.extras.Json({'url': url})),
             )
             row = cur.fetchone()
         conn.commit()
-        return dict(row)
+        return _normalize_source(dict(row))
     finally:
         _put_conn(conn)
 
@@ -371,7 +395,7 @@ def set_data_source_active(source_id: int, active: bool) -> None:
     conn = _get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute('UPDATE data_sources SET active=%s WHERE id=%s', (active, source_id))
+            cur.execute('UPDATE data_sources SET enabled=%s WHERE id=%s', (active, source_id))
         conn.commit()
     finally:
         _put_conn(conn)
