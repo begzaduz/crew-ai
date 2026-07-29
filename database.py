@@ -63,14 +63,21 @@ def init_db() -> None:
             ''')
 
             # ── Studio Lab Dashboard uchun: loyihalar ────────────────
+            # MUHIM: bu jadvallar ba'zi repo'larda studio_schema.py orqali
+            # ALLAQACHON yaratilgan bo'lishi mumkin (turli ustunlar bilan).
+            # "CREATE TABLE IF NOT EXISTS" jadval mavjud bo'lsa hech narsa
+            # qilmaydi — shuning uchun yangi ustunlarni har doim ALTER TABLE
+            # ADD COLUMN IF NOT EXISTS orqali qo'shamiz. Bu ham yangi, ham
+            # eski (boshqacha sxemadagi) jadval uchun xavfsiz.
             cur.execute('''
                 CREATE TABLE IF NOT EXISTS projects (
-                    id         SERIAL PRIMARY KEY,
-                    slug       TEXT UNIQUE NOT NULL,
-                    name       TEXT NOT NULL,
-                    created_at TIMESTAMPTZ DEFAULT NOW()
+                    id SERIAL PRIMARY KEY
                 )
             ''')
+            cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS slug TEXT")
+            cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS name TEXT")
+            cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()")
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_slug ON projects(slug)")
 
             # Har bir loyihaning workflow konfiguratsiyasi (terminologiya,
             # klub taxalluslari, kanal nomi, uslub va h.k.) JSONB'da saqlanadi.
@@ -78,26 +85,26 @@ def init_db() -> None:
             # qolgan qiymatlar Dashboard'dan tahrirlanganda darhol ta'sir qiladi.
             cur.execute('''
                 CREATE TABLE IF NOT EXISTS workflows (
-                    id         SERIAL PRIMARY KEY,
-                    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-                    type       TEXT NOT NULL DEFAULT 'rss_news',
-                    config     JSONB NOT NULL DEFAULT '{}'::jsonb,
-                    updated_at TIMESTAMPTZ DEFAULT NOW(),
-                    UNIQUE (project_id, type)
+                    id SERIAL PRIMARY KEY,
+                    project_id INTEGER
                 )
             ''')
+            cur.execute("ALTER TABLE workflows ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'rss_news'")
+            cur.execute("ALTER TABLE workflows ADD COLUMN IF NOT EXISTS config JSONB NOT NULL DEFAULT '{}'::jsonb")
+            cur.execute("ALTER TABLE workflows ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()")
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_workflows_project_type ON workflows(project_id, type)")
 
             # Har bir loyihaning RSS (yoki boshqa turdagi) manbalari.
             cur.execute('''
                 CREATE TABLE IF NOT EXISTS data_sources (
-                    id         SERIAL PRIMARY KEY,
-                    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-                    url        TEXT NOT NULL,
-                    type       TEXT NOT NULL DEFAULT 'rss',
-                    active     BOOLEAN NOT NULL DEFAULT TRUE,
-                    created_at TIMESTAMPTZ DEFAULT NOW()
+                    id SERIAL PRIMARY KEY,
+                    project_id INTEGER
                 )
             ''')
+            cur.execute("ALTER TABLE data_sources ADD COLUMN IF NOT EXISTS url TEXT")
+            cur.execute("ALTER TABLE data_sources ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'rss'")
+            cur.execute("ALTER TABLE data_sources ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE")
+            cur.execute("ALTER TABLE data_sources ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()")
         conn.commit()
         log.info('[DB] PostgreSQL jadval tayyor.')
     finally:
