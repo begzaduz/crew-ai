@@ -10,30 +10,56 @@ from urllib.parse import urlparse, parse_qs
 import requests
 
 from config import TOKEN, CHANNEL, ADMIN_IDS, PORT, INTERVAL, WEBHOOK_SECRET, DAILY_POST_BUDGET
+import database
 from database import (
     is_processed, mark_processed, clear_cache, get_stats, init_db,
     save_post, get_recent_posts, get_today_api_calls, increment_api_calls,
 )
-from feeds import fetch_news, fetch_og_image
-from registry import get_workflow
-
-news_workflow = get_workflow("rss_news")
+from feeds import fetch_news, fetch_og_image, DEFAULT_RSS_FEEDS
+from workflows.rss_news import (
+    generate_post, DEFAULT_TERMINOLOGY, DEFAULT_NICKNAMES,
+    DEFAULT_CHANNEL_TAG, DEFAULT_TONE,
+)
 from api_football import fetch_standings, fetch_matches_by_date
 from webapp import HTML_PAGE
-from studio_schema import init_studio_schema, seed_ingliz_futboli
-from studio_api import handle_get as studio_get, handle_post as studio_post
-from studio_ui import HTML_STUDIO_PAGE
+from studio_ui import STUDIO_HTML
+import studio_api
 
 log = logging.getLogger(__name__)
 
 # Bir vaqtda faqat bitta auto_news_post() ishlashi uchun
 _news_lock = threading.Lock()
 
-# YANGI: Pipeline'da 3 ta agent (Researcher+Writer+Editor) ishlaydi,
+# Pipeline'da 3 ta agent (Researcher+Writer+Editor) ishlaydi,
 # demak har bir post urinishi taxminan 3 ta Gemini API chaqiruvini
 # sarflaydi. Shu asosda kunlik xavfsiz limit hisoblanadi.
 CALLS_PER_POST = 3
 DAILY_API_LIMIT = DAILY_POST_BUDGET * CALLS_PER_POST
+
+# "Ingliz Futboli" loyihasining DB dagi identifikatori. Server ishga
+# tushganda _bootstrap_project() orqali to'ldiriladi (project mavjud
+# bo'lmasa yaratiladi, mavjud bo'lsa faqat id olinadi).
+PROJECT_SLUG = 'ingliz-futboli'
+PROJECT_ID: int | None = None
+
+
+def _bootstrap_project() -> int:
+    """'Ingliz Futboli' loyihasini DB'da tayyorlaydi: project + workflow
+    config (terminologiya/taxalluslar/kanal/uslub) + data_sources (RSS
+    manbalar). Loyiha allaqachon mavjud bo'lsa, hech narsa qayta yozilmaydi
+    — Dashboard'dan kiritilgan o'zgarishlar saqlanib qoladi."""
+    project = database.seed_project_if_empty(
+        slug=PROJECT_SLUG,
+        name='Ingliz Futboli',
+        default_config={
+            'terminology': DEFAULT_TERMINOLOGY,
+            'nicknames': DEFAULT_NICKNAMES,
+            'channel_tag': DEFAULT_CHANNEL_TAG,
+            'tone': DEFAULT_TONE,
+        },
+        default_sources=DEFAULT_RSS_FEEDS,
+    )
+    return project['id']
 
 
 # ── Telegram yordamchi ────────────────────────────────────
@@ -128,7 +154,7 @@ def is_admin(chat_id: int) -> bool:
     return chat_id in ADMIN_IDS
 
 
-# ── YANGI: Kunlik API byudjetini tekshirish ───────────────
+# ── Kunlik API byudjetini tekshirish ──────────────────────
 def _quota_available() -> tuple[bool, int, int]:
     """(mavjudmi, ishlatilgan, limit) qaytaradi."""
     used = get_today_api_calls()
@@ -147,8 +173,17 @@ def auto_news_post() -> bool:
             log.info(f'[Auto] Kunlik API byudjeti tugagan ({used}/{limit}). O\'tkazib yuborildi.')
             return False
 
-        log.info('[Auto] Yangilik qidirilmoqda...')
-        articles = fetch_news()
+        # RSS manbalar endi kod ichidan emas, DB'dagi data_sources
+        # jadvalidan olinadi — Dashboard'da qo'shilgan/o'chirilgan
+        # manba shu yerda darhol amalda qo'llaniladi.
+        sources = database.get_data_sources(PROJECT_ID, active_only=True)
+        urls = [s['url'] for s in sources]
+        if not urls:
+            log.warning('[Auto] Faol RSS manbalar yo\'q (data_sources bo\'sh). O\'tkazib yuborildi.')
+            return False
+
+        log.info(f'[Auto] Yangilik qidirilmoqda ({len(urls)} ta manbadan)...')
+        articles = fetch_news(urls)
         if not articles:
             log.info('[Auto] Yangilik topilmadi.')
             return False
@@ -164,10 +199,7 @@ def auto_news_post() -> bool:
 
             log.info(f'[Auto] Qayta ishlanmoqda (score:{article["score"]}): {article["title"][:60]}')
             try:
-                # DIQQAT: bu yerda avval 'generate_post(article)' chaqirilar edi —
-                # bu funksiya endi mavjud emas (pipeline workflows/rss_news.py'ga
-                # ko'chirilgan). To'g'ri chaqiruv — news_workflow.run(article).
-                post = news_workflow.run(article)
+                post = generate_post(article, PROJECT_ID)
                 increment_api_calls(CALLS_PER_POST)
             except Exception as e:
                 increment_api_calls(CALLS_PER_POST)
@@ -181,12 +213,7 @@ def auto_news_post() -> bool:
                 mark_processed(article['url'], article['title'], article['score'])
                 continue
 
-            # Editor postni rad etsa yoki JSON javobni tushunolmasa,
-            # workflow nazariy jihatdan None qaytarishi mumkin — bu holatda
-            # post HECH QACHON kanalga yuborilmaydi, faqat qayta ishlangan
-            # deb belgilanadi va keyingisiga o'tiladi.
-            if post is None:
-                log.warning(f'[Auto] Editor rad etdi/tekshira olmadi, o\'tkazib yuborildi: {article["title"][:60]}')
+            if not post or len(post.strip()) < 50:
                 mark_processed(article['url'], article['title'], article['score'])
                 continue
 
@@ -236,8 +263,9 @@ def handle_update(update: dict) -> None:
 
         if text == '/start':
             tg_send(chat_id,
-                'Ingliz Futboli Bot v4.0\n\n'
-                '3 agent: Researcher + Writer + Editor\n\n'
+                'Ingliz Futboli Bot v4.1\n\n'
+                '3 agent: Researcher + Writer + Editor\n'
+                '(terminologiya, taxalluslar va manbalar Dashboard orqali boshqariladi)\n\n'
                 'Matn yuboring — professional post\n'
                 '/yangilik — RSS dan yangi xabar olish\n'
                 '/stat — Statistika\n'
@@ -302,42 +330,30 @@ def handle_update(update: dict) -> None:
             tg_send(chat_id, '⏳ 3 agent ishlayapti...')
             try:
                 article = {'title': text, 'description': '', 'url': None, 'score': 100}
-                post = news_workflow.run(article)
+                post = generate_post(article, PROJECT_ID)
                 increment_api_calls(CALLS_PER_POST)
+                pending[chat_id] = {'text': post, 'image_url': None}
+                tg_send(chat_id, f'Ko\'rib chiqing:\n\n{post}')
+                tg_send(chat_id, 'Tasdiqlang:',
+                        reply_markup={
+                            'keyboard': [['Yuborish'], ['Bekor']],
+                            'resize_keyboard': True,
+                            'one_time_keyboard': True,
+                        })
             except Exception as e:
                 increment_api_calls(CALLS_PER_POST)
                 log.error(f'[Bot] Post yaratish xatosi: {e}')
                 tg_send(chat_id, f'❌ Xatolik: {e}')
-                return
-
-            # Editor postni tasdiqlamadi (yoki JSON javobni tushunolmadi).
-            # Tekshirilmagan post foydalanuvchiga ham "tayyor" sifatida
-            # ko'rsatilmaydi — buni yashirin xato deb hisoblaymiz.
-            if post is None:
-                tg_send(chat_id, '❌ Editor postni tasdiqlamadi (yoki tekshira olmadi). '
-                                  'Matnni biroz o\'zgartirib qayta yuboring.')
-                return
-
-            pending[chat_id] = {'text': post, 'image_url': None}
-            tg_send(chat_id, f'Ko\'rib chiqing:\n\n{post}')
-            tg_send(chat_id, 'Tasdiqlang:',
-                    reply_markup={
-                        'keyboard': [['Yuborish'], ['Bekor']],
-                        'resize_keyboard': True,
-                        'one_time_keyboard': True,
-                    })
 
     except Exception as e:
         log.error(f'[Bot] handle_update kutilmagan xato: {e}')
 
 
-# ── Webhook + Mini App HTTP handler ───────────────────────
+# ── Webhook + Mini App + Studio Dashboard HTTP handler ────
 class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
-    """Har bir so'rovni alohida thread'da qayta ishlaydi — Mini App va
-    Telegram webhook so'rovlari bir-birini bloklamasligi uchun."""
+    """Har bir so'rovni alohida thread'da qayta ishlaydi — Mini App, Studio
+    Dashboard va Telegram webhook so'rovlari bir-birini bloklamasligi uchun."""
     daemon_threads = True
-
-
 class WebhookHandler(BaseHTTPRequestHandler):
     def _json(self, data, status: int = 200) -> None:
         body = json.dumps(data, default=str, ensure_ascii=False).encode('utf-8')
@@ -349,18 +365,25 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path.startswith('/api/studio/'):
+        path = parsed.path
+
+        # ── Studio Dashboard API (manba qo'shish, terminologiya saqlash) ──
+        if path in studio_api.POST_ROUTES:
             length = int(self.headers.get('Content-Length', 0))
-            raw = self.rfile.read(length) if length else b'{}'
+            body = self.rfile.read(length)
             try:
-                body = json.loads(raw or b'{}')
+                data = json.loads(body) if body else {}
             except Exception:
-                self._json({'error': 'yaroqsiz JSON'}, status=400)
-                return
-            status, data = studio_post(parsed.path, body, self.headers)
-            self._json(data, status=status)
+                data = {}
+            try:
+                status, payload = studio_api.POST_ROUTES[path](PROJECT_ID, data)
+            except Exception as e:
+                log.error(f'[StudioAPI] {path}: {e}')
+                status, payload = 500, {'error': str(e)}
+            self._json(payload, status=status)
             return
 
+        # ── Telegram webhook ──────────────────────────────────────────
         incoming_secret = self.headers.get('X-Telegram-Bot-Api-Secret-Token', '')
         if not hmac.compare_digest(incoming_secret, WEBHOOK_SECRET):
             log.warning('[Webhook] Noto\'g\'ri yoki yo\'q secret token — so\'rov rad etildi.')
@@ -384,16 +407,22 @@ class WebhookHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
-        if path in ('/studio', '/studio/'):
+        # ── Studio Dashboard API (o'qish) ──────────────────────────────
+        if path in studio_api.GET_ROUTES:
+            try:
+                status, payload = studio_api.GET_ROUTES[path](PROJECT_ID, None)
+            except Exception as e:
+                log.error(f'[StudioAPI] {path}: {e}')
+                status, payload = 500, {'error': str(e)}
+            self._json(payload, status=status)
+            return
+
+        # ── Studio Dashboard sahifasi ───────────────────────────────────
+        if path in ('/studio', '/studio/', '/dashboard'):
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
             self.end_headers()
-            self.wfile.write(HTML_STUDIO_PAGE.encode('utf-8'))
-            return
-
-        if path.startswith('/api/studio/'):
-            status, data = studio_get(path, parse_qs(parsed.query), self.headers)
-            self._json(data, status=status)
+            self.wfile.write(STUDIO_HTML.encode('utf-8'))
             return
 
         if path == '/api/posts':
@@ -437,7 +466,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b'Ingliz Futboli Bot v4.0')
+        self.wfile.write(b'Ingliz Futboli Bot v4.1')
 
     def log_message(self, *args):
         pass
@@ -457,9 +486,12 @@ def news_loop() -> None:
 # ── Entry point ───────────────────────────────────────────
 if __name__ == '__main__':
     init_db()
-    init_studio_schema()
-    seed_ingliz_futboli()
-    log.info(f'[Server] Port {PORT} da ishga tushdi | Admin IDlar: {ADMIN_IDS} | Kunlik API byudjeti: {DAILY_API_LIMIT}')
+    PROJECT_ID = _bootstrap_project()
+    log.info(
+        f'[Server] Port {PORT} da ishga tushdi | Admin IDlar: {ADMIN_IDS} | '
+        f'Kunlik API byudjeti: {DAILY_API_LIMIT} | Loyiha ID: {PROJECT_ID} '
+        f'| Dashboard: /studio'
+    )
     threading.Thread(target=news_loop, daemon=True).start()
     server = ThreadingHTTPServer(('0.0.0.0', PORT), WebhookHandler)
     try:
