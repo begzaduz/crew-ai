@@ -8,7 +8,11 @@ from config import ARTICLE_MAX_AGE_HOURS, MIN_SCORE
 
 log = logging.getLogger(__name__)
 
-RSS_FEEDS = [
+# Faqat seed (birinchi marta DB bo'sh bo'lganda data_sources jadvaliga
+# yoziladigan) standart ro'yxat. Runtime'da fetch_news() BU o'zgaruvchini
+# ishlatmaydi — chaqiruvchi (main.py) manbalarni har doim DB'dagi
+# data_sources jadvalidan olib, parametr sifatida beradi.
+DEFAULT_RSS_FEEDS = [
     'https://www.theguardian.com/football/premierleague/rss',
     'https://www.skysports.com/rss/12040',
     'https://www.90min.com/posts.rss',
@@ -105,12 +109,23 @@ def fetch_og_image(url: str) -> str | None:
     return None
 
 
-def fetch_news() -> list[dict]:
+def fetch_news(rss_feeds: list[str]) -> list[dict]:
+    """RSS manbalar ro'yxatidan yangiliklarni oladi.
+
+    MUHIM: rss_feeds endi majburiy parametr — chaqiruvchi (main.py) buni
+    DB'dagi data_sources jadvalidan olib beradi. Bu yerda RSS manzillari
+    qattiq yozilmagan (hardcode qilinmagan), shu bilan Dashboard'dan
+    qo'shilgan/o'chirilgan manbalar darhol amalda qo'llaniladi.
+    """
+    if not rss_feeds:
+        log.warning("[Feeds] RSS manbalar ro'yxati bo'sh — hech narsa olinmadi.")
+        return []
+
     seen: set[str] = set()
     articles: list[dict] = []
     cutoff = datetime.now(timezone.utc) - timedelta(hours=ARTICLE_MAX_AGE_HOURS)
 
-    for feed_url in RSS_FEEDS:
+    for feed_url in rss_feeds:
         try:
             feed = feedparser.parse(feed_url)
             for entry in feed.entries:
@@ -140,7 +155,7 @@ def fetch_news() -> list[dict]:
             log.error(f'[RSS] {feed_url}: {e}')
 
     articles.sort(key=lambda x: x['score'], reverse=True)
-    log.info(f'[Feeds] Topildi: {len(articles)} ta yangilik')
+    log.info(f'[Feeds] Topildi: {len(articles)} ta yangilik ({len(rss_feeds)} ta manbadan)')
     return articles
 
 
