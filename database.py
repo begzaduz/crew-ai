@@ -105,6 +105,39 @@ def init_db() -> None:
             cur.execute("ALTER TABLE data_sources ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'rss'")
             cur.execute("ALTER TABLE data_sources ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE")
             cur.execute("ALTER TABLE data_sources ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()")
+
+            # 'assets' va 'reviews' jadvallari allaqachon mavjud (studio_schema.py
+            # orqali yaratilgan): assets(id, project_id, source_url, type, title,
+            # content, score, status, created_at), reviews(id, asset_id, reviewer,
+            # decision, notes, reviewed_at). Review Queue uchun ikkita qo'shimcha
+            # ustun kerak: post bilan birga yuboriladigan rasm va qachon e'lon
+            # qilinganligi.
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS assets (
+                    id SERIAL PRIMARY KEY,
+                    project_id INTEGER
+                )
+            ''')
+            cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS source_url TEXT")
+            cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'text'")
+            cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS title TEXT")
+            cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS content TEXT")
+            cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS score INTEGER DEFAULT 0")
+            cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft'")
+            cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()")
+            cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS image_url TEXT")
+            cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ")
+
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS reviews (
+                    id SERIAL PRIMARY KEY,
+                    asset_id INTEGER
+                )
+            ''')
+            cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS reviewer TEXT NOT NULL DEFAULT 'dashboard'")
+            cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS decision TEXT NOT NULL DEFAULT 'approved'")
+            cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS notes TEXT")
+            cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ DEFAULT NOW()")
         conn.commit()
         log.info('[DB] PostgreSQL jadval tayyor.')
     finally:
@@ -290,17 +323,20 @@ def get_workflow_config(project_id: int, wf_type: str = 'rss_news') -> dict:
 
 
 def set_workflow_config(project_id: int, config: dict, wf_type: str = 'rss_news') -> dict:
-    """Config'ni to'liq almashtiradi (overwrite)."""
+    """Config'ni to'liq almashtiradi (overwrite).
+    MUHIM: jadvalda 'workflow_type' degan NOT NULL (standart qiymatsiz) ustun
+    ham bor (mening qo'shgan 'type' ustunimdan tashqari) — shuning uchun
+    ikkalasini ham to'ldiramiz."""
     conn = _get_conn()
     try:
         with conn.cursor() as cur:
             cur.execute(
-                '''INSERT INTO workflows (project_id, type, config)
-                   VALUES (%s, %s, %s)
+                '''INSERT INTO workflows (project_id, type, workflow_type, config)
+                   VALUES (%s, %s, %s, %s)
                    ON CONFLICT (project_id, type)
                    DO UPDATE SET config = EXCLUDED.config, updated_at = NOW()
                    RETURNING config''',
-                (project_id, wf_type, psycopg2.extras.Json(config)),
+                (project_id, wf_type, wf_type, psycopg2.extras.Json(config)),
             )
             result = cur.fetchone()[0]
         conn.commit()
@@ -317,12 +353,12 @@ def update_workflow_config(project_id: int, patch: dict, wf_type: str = 'rss_new
     try:
         with conn.cursor() as cur:
             cur.execute(
-                '''INSERT INTO workflows (project_id, type, config)
-                   VALUES (%s, %s, %s)
+                '''INSERT INTO workflows (project_id, type, workflow_type, config)
+                   VALUES (%s, %s, %s, %s)
                    ON CONFLICT (project_id, type)
                    DO UPDATE SET config = workflows.config || EXCLUDED.config, updated_at = NOW()
                    RETURNING config''',
-                (project_id, wf_type, psycopg2.extras.Json(patch)),
+                (project_id, wf_type, wf_type, psycopg2.extras.Json(patch)),
             )
             result = cur.fetchone()[0]
         conn.commit()
@@ -407,6 +443,116 @@ def delete_data_source(source_id: int) -> None:
         with conn.cursor() as cur:
             cur.execute('DELETE FROM data_sources WHERE id=%s', (source_id,))
         conn.commit()
+    finally:
+        _put_conn(conn)
+
+
+# ── Studio Lab: assets & reviews (Review Queue) ───────────
+# AI post yaratganda TO'G'RIDAN-TO'G'RI kanalga yuborilmaydi — avval
+# 'assets' jadvaliga status='draft' bilan yoziladi. Dashboard'da admin
+# postni tahrirlaydi (update_asset_content), so'ng Tasdiqlaydi (bu vaqtda
+# 'reviews'ga yozuv qo'shiladi va asset 'published' bo'ladi) yoki Rad
+# etadi ('rejected'). Faqat TASDIQLANGAN postlar kanalga ketadi.
+def create_asset(project_id: int, source_url: str | None, asset_type: str,
+                  title: str, content: str, score: int = 0,
+                  image_url: str | None = None) -> dict:
+    conn = _get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                '''INSERT INTO assets (project_id, source_url, type, title, content, score, status, image_url)
+                   VALUES (%s, %s, %s, %s, %s, %s, 'draft', %s)
+                   RETURNING *''',
+                (project_id, source_url, asset_type, title, content, score, image_url),
+            )
+            row = cur.fetchone()
+        conn.commit()
+        return dict(row)
+    finally:
+        _put_conn(conn)
+
+
+def get_assets(project_id: int, status: str | None = None, limit: int = 50) -> list[dict]:
+    conn = _get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if status:
+                cur.execute(
+                    '''SELECT * FROM assets WHERE project_id=%s AND status=%s
+                       ORDER BY created_at DESC LIMIT %s''',
+                    (project_id, status, limit),
+                )
+            else:
+                cur.execute(
+                    '''SELECT * FROM assets WHERE project_id=%s
+                       ORDER BY created_at DESC LIMIT %s''',
+                    (project_id, limit),
+                )
+            return [dict(r) for r in cur.fetchall()]
+    finally:
+        _put_conn(conn)
+
+
+def get_asset(asset_id: int) -> dict | None:
+    conn = _get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('SELECT * FROM assets WHERE id=%s', (asset_id,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+    finally:
+        _put_conn(conn)
+
+
+def update_asset_content(asset_id: int, content: str, title: str | None = None) -> None:
+    """Dashboard'dagi 'Edit' — tasdiqlashdan oldin postni qo'lda tahrirlash."""
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            if title is not None:
+                cur.execute('UPDATE assets SET content=%s, title=%s WHERE id=%s', (content, title, asset_id))
+            else:
+                cur.execute('UPDATE assets SET content=%s WHERE id=%s', (content, asset_id))
+        conn.commit()
+    finally:
+        _put_conn(conn)
+
+
+def set_asset_status(asset_id: int, status: str) -> None:
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute('UPDATE assets SET status=%s WHERE id=%s', (status, asset_id))
+        conn.commit()
+    finally:
+        _put_conn(conn)
+
+
+def mark_asset_published(asset_id: int) -> None:
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE assets SET status='published', published_at=NOW() WHERE id=%s",
+                (asset_id,),
+            )
+        conn.commit()
+    finally:
+        _put_conn(conn)
+
+
+def add_review(asset_id: int, reviewer: str, decision: str, notes: str = '') -> dict:
+    conn = _get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                '''INSERT INTO reviews (asset_id, reviewer, decision, notes)
+                   VALUES (%s, %s, %s, %s) RETURNING *''',
+                (asset_id, reviewer, decision, notes),
+            )
+            row = cur.fetchone()
+        conn.commit()
+        return dict(row)
     finally:
         _put_conn(conn)
 
