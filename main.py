@@ -1,5 +1,4 @@
 import json
-import re
 import time
 import hmac
 import logging
@@ -7,13 +6,12 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from urllib.parse import urlparse, parse_qs
-import requests
 
-from config import TOKEN, CHANNEL, ADMIN_IDS, PORT, INTERVAL, WEBHOOK_SECRET, DAILY_POST_BUDGET
+from config import ADMIN_IDS, PORT, INTERVAL, WEBHOOK_SECRET, DAILY_POST_BUDGET
 import database
 from database import (
     is_processed, mark_processed, clear_cache, get_stats, init_db,
-    save_post, get_recent_posts, get_today_api_calls, increment_api_calls,
+    get_recent_posts, get_today_api_calls, increment_api_calls,
 )
 from feeds import fetch_news, fetch_og_image, DEFAULT_RSS_FEEDS
 from workflows.rss_news import (
@@ -23,6 +21,7 @@ from workflows.rss_news import (
 from api_football import fetch_standings, fetch_matches_by_date
 from webapp import HTML_PAGE
 from studio_ui import STUDIO_HTML
+from telegram_utils import tg_send, notify_admins
 import studio_api
 
 log = logging.getLogger(__name__)
@@ -60,91 +59,6 @@ def _bootstrap_project() -> int:
         default_sources=DEFAULT_RSS_FEEDS,
     )
     return project['id']
-
-
-# ── Telegram yordamchi ────────────────────────────────────
-def tg_send(chat_id: int | str, text: str, reply_markup: dict | None = None) -> dict:
-    payload: dict = {'chat_id': chat_id, 'text': text}
-    if reply_markup:
-        payload['reply_markup'] = reply_markup
-    try:
-        res = requests.post(
-            f'https://api.telegram.org/bot{TOKEN}/sendMessage',
-            json=payload,
-            timeout=15,
-        )
-        return res.json()
-    except Exception as e:
-        log.error(f'[TG] tg_send xato: {e}')
-        return {'ok': False, 'description': str(e)}
-
-
-def notify_admins(text: str) -> None:
-    """Barcha adminlarga xabar yuboradi (masalan xatolar haqida)."""
-    for admin_id in ADMIN_IDS:
-        tg_send(admin_id, text)
-
-
-def tg_channel(text: str, image_url: str | None = None) -> dict:
-    """
-    Kanalga yuborish:
-    - image_url bo'lsa: sendPhoto (rasm + caption HTML)
-    - bo'lmasa: sendMessage (faqat matn HTML)
-    """
-    text = _clean_post(text)
-
-    if image_url:
-        caption = text[:1024]
-        res = requests.post(
-            f'https://api.telegram.org/bot{TOKEN}/sendPhoto',
-            json={
-                'chat_id': CHANNEL,
-                'photo': image_url,
-                'caption': caption,
-                'parse_mode': 'HTML',
-            },
-            timeout=15,
-        )
-        result = res.json()
-        if not result.get('ok'):
-            log.warning(f'[TG] sendPhoto xato: {result.get("description")} — matn sifatida yuborilmoqda')
-            return tg_channel(text, image_url=None)
-        return result
-    else:
-        res = requests.post(
-            f'https://api.telegram.org/bot{TOKEN}/sendMessage',
-            json={
-                'chat_id': CHANNEL,
-                'text': text,
-                'parse_mode': 'HTML',
-            },
-            timeout=15,
-        )
-        return res.json()
-
-
-def _clean_post(post: str) -> str:
-    """
-    Sarlavha qatorini <b>...</b> bilan o'raydi (agar allaqachon o'ralmagan bo'lsa).
-    Boshlang'ich emoji bo'lsa, uni bold tashqarisida qoldiradi:
-    masalan "🚨 Sarlavha matni" -> "🚨 <b>Sarlavha matni</b>"
-    """
-    lines = post.split('\n')
-    cleaned = []
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if i == 0 and stripped:
-            bold_match = re.search(r'<b>(.*?)</b>', stripped)
-            if bold_match:
-                cleaned.append(f'<b>{bold_match.group(1)}</b>')
-            else:
-                m = re.match(r'^([\U0001F300-\U0001FAFF\u2600-\u27BF]+\s*)?(.*)$', stripped)
-                prefix = m.group(1) or ''
-                title = m.group(2).strip()
-                cleaned.append(f'{prefix}<b>{title}</b>' if title else stripped)
-        else:
-            cleaned.append(line)
-    return '\n'.join(cleaned)
 
 
 # ── Admin tekshiruvi ──────────────────────────────────────
@@ -220,23 +134,28 @@ def auto_news_post() -> bool:
             image_url = fetch_og_image(article['url']) if article.get('url') else None
             log.info(f'[Auto] Rasm: {image_url[:60] if image_url else "yoq"}')
 
-            result = tg_channel(post, image_url=image_url)
-            if result.get('ok'):
-                mark_processed(article['url'], article['title'], article['score'])
-                save_post(article['url'], article['title'], post, image_url)
-                log.info(f'[Auto] ✅ Yuborildi: {article["title"][:60]}')
-                return True
-            else:
-                log.error(f'[Auto] TG xato: {result.get("description")}')
+            # MUHIM: bu yerda kanalga TO'G'RIDAN-TO'G'RI yuborilmaydi.
+            # Post 'assets' jadvaliga status='draft' bilan yoziladi —
+            # Dashboard'dagi Review Queue'da admin uni ko'radi, kerak
+            # bo'lsa tahrirlaydi, va faqat TASDIQLAGANDAN keyin
+            # (studio_api.approve_asset) kanalga jo'naydi.
+            database.create_asset(
+                project_id=PROJECT_ID,
+                source_url=article['url'],
+                asset_type='rss_news',
+                title=article['title'],
+                content=post,
+                score=article['score'],
+                image_url=image_url,
+            )
+            mark_processed(article['url'], article['title'], article['score'])
+            log.info(f'[Auto] ✅ Review Queue-ga qo\'shildi: {article["title"][:60]}')
+            return True
 
         log.info('[Auto] Barcha yangiliklar allaqachon qayta ishlangan.')
         return False
     finally:
         _news_lock.release()
-
-
-# ── Foydalanuvchi holati ──────────────────────────────────
-pending: dict[int, dict] = {}
 
 
 # ── Update handler ────────────────────────────────────────
@@ -263,11 +182,15 @@ def handle_update(update: dict) -> None:
 
         if text == '/start':
             tg_send(chat_id,
-                'Ingliz Futboli Bot v4.1\n\n'
+                'Ingliz Futboli Bot v5.0\n\n'
                 '3 agent: Researcher + Writer + Editor\n'
                 '(terminologiya, taxalluslar va manbalar Dashboard orqali boshqariladi)\n\n'
-                'Matn yuboring — professional post\n'
-                '/yangilik — RSS dan yangi xabar olish\n'
+                'MUHIM: Bot endi kanalga hech narsani to\'g\'ridan-to\'g\'ri '
+                'yubormaydi. Har qanday matn yoki /yangilik natijasi avval '
+                'Review Queue\'ga (Dashboard) qo\'shiladi — tasdiqlash va '
+                'kanalga yuborish FAQAT Dashboard\'da bo\'ladi.\n\n'
+                'Matn yuboring — tarjima/formatlab Review Queue-ga qo\'shadi\n'
+                '/yangilik — RSS dan yangi xabar olib Review Queue-ga qo\'shadi\n'
                 '/stat — Statistika\n'
                 '/clearcache — Keshni tozalash\n'
                 '/help — Yordam'
@@ -276,10 +199,11 @@ def handle_update(update: dict) -> None:
         elif text == '/help':
             tg_send(chat_id,
                 'Qo\'llanma:\n\n'
-                '• Har qanday matn yuboring → AI post yaratadi → tasdiqlang\n'
-                '• /yangilik → RSS lentadan eng dolzarb yangilik\n'
+                '• Har qanday matn yuboring → AI tarjima/formatlab Review Queue-ga qo\'shadi\n'
+                '• /yangilik → RSS lentadan eng dolzarb yangilikni Review Queue-ga qo\'shadi\n'
                 '• /stat → Nechta yangilik qayta ishlangani\n'
-                '• /clearcache → Keshni tozalab /yangilik yuboring\n\n'
+                '• /clearcache → Keshni tozalab /yangilik yuboring\n'
+                '• Tasdiqlash va kanalga yuborish → Dashboard (/studio)\n\n'
                 f'Admin IDlar: {ADMIN_IDS}'
             )
 
@@ -293,7 +217,8 @@ def handle_update(update: dict) -> None:
                 return
             tg_send(chat_id, '⏳ Yangilik olinayapti (3 agent ishlaydi)...')
             ok = auto_news_post()
-            tg_send(chat_id, '✅ Post yuborildi!' if ok else '❌ Yangi yangilik topilmadi (yoki kvota tugagan).')
+            tg_send(chat_id, '✅ Review Queue-ga qo\'shildi! Tasdiqlash uchun Dashboard: /studio' if ok
+                    else '❌ Yangi yangilik topilmadi (yoki kvota tugagan).')
 
         elif text == '/stat':
             cnt, avg = get_stats()
@@ -307,19 +232,6 @@ def handle_update(update: dict) -> None:
             clear_cache()
             tg_send(chat_id, '✅ Kesh tozalandi! /yangilik yuboring.')
 
-        elif text == 'Yuborish' and chat_id in pending:
-            p = pending.pop(chat_id)
-            result = tg_channel(p['text'], image_url=p.get('image_url'))
-            if result.get('ok'):
-                save_post(None, p['text'][:80], p['text'], p.get('image_url'))
-            tg_send(chat_id, '✅ Kanalga yuborildi!',
-                    reply_markup={'remove_keyboard': True})
-
-        elif text == 'Bekor' and chat_id in pending:
-            pending.pop(chat_id)
-            tg_send(chat_id, '❌ Bekor qilindi.',
-                    reply_markup={'remove_keyboard': True})
-
         elif text and not text.startswith('/'):
             if not is_admin(chat_id):
                 return
@@ -327,19 +239,20 @@ def handle_update(update: dict) -> None:
             if not ok_quota:
                 tg_send(chat_id, f'⛔ Bugungi API byudjeti tugadi ({used}/{limit}). Ertaga (Pacific vaqti bo\'yicha) tiklanadi.')
                 return
-            tg_send(chat_id, '⏳ 3 agent ishlayapti...')
+            tg_send(chat_id, '⏳ 3 agent ishlayapti (tarjima + formatlash)...')
             try:
+                # Matn boshqa tilda bo'lishi ham mumkin — pipeline avtomatik
+                # o'zbek tiliga tarjima qilib, kanalga mos formatga soladi.
                 article = {'title': text, 'description': '', 'url': None, 'score': 100}
                 post = generate_post(article, PROJECT_ID)
                 increment_api_calls(CALLS_PER_POST)
-                pending[chat_id] = {'text': post, 'image_url': None}
-                tg_send(chat_id, f'Ko\'rib chiqing:\n\n{post}')
-                tg_send(chat_id, 'Tasdiqlang:',
-                        reply_markup={
-                            'keyboard': [['Yuborish'], ['Bekor']],
-                            'resize_keyboard': True,
-                            'one_time_keyboard': True,
-                        })
+                # MUHIM: bu yerda kanalga yubormaymiz — Review Queue'ga
+                # qo'shamiz, tasdiqlash faqat Dashboard'da bo'ladi.
+                database.create_asset(
+                    project_id=PROJECT_ID, source_url=None, asset_type='manual',
+                    title=text[:80], content=post, score=100, image_url=None,
+                )
+                tg_send(chat_id, f'✅ Review Queue-ga qo\'shildi. Tasdiqlash uchun Dashboard: /studio\n\n{post}')
             except Exception as e:
                 increment_api_calls(CALLS_PER_POST)
                 log.error(f'[Bot] Post yaratish xatosi: {e}')
@@ -409,8 +322,10 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
         # ── Studio Dashboard API (o'qish) ──────────────────────────────
         if path in studio_api.GET_ROUTES:
+            qs = parse_qs(parsed.query)
+            query = {k: v[0] for k, v in qs.items()}
             try:
-                status, payload = studio_api.GET_ROUTES[path](PROJECT_ID, None)
+                status, payload = studio_api.GET_ROUTES[path](PROJECT_ID, query)
             except Exception as e:
                 log.error(f'[StudioAPI] {path}: {e}')
                 status, payload = 500, {'error': str(e)}
@@ -466,7 +381,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b'Ingliz Futboli Bot v4.1')
+        self.wfile.write(b'Ingliz Futboli Bot v5.0')
 
     def log_message(self, *args):
         pass
