@@ -100,6 +100,43 @@ def update_config(project_id: int, data: dict) -> tuple[int, object]:
         return 500, {'error': str(e)}
 
 
+# ── Dashboard KPI ("posts today", pending, published, sources) ────
+# Yangi jadval yoki ustun qo'shilmadi — faqat mavjud get_assets()/
+# get_data_sources() natijalarini Dashboard uchun birlashtiradi.
+def get_dashboard_stats(project_id: int) -> tuple[int, object]:
+    try:
+        import datetime as _dt
+        drafts = database.get_assets(project_id, status='draft', limit=200)
+        published = database.get_assets(project_id, status='published', limit=200)
+        rejected = database.get_assets(project_id, status='rejected', limit=200)
+        sources = database.get_data_sources(project_id)
+
+        today = _dt.datetime.now(_dt.timezone.utc).date()
+        posts_today = 0
+        for a in published:
+            pub = a.get('published_at')
+            if not pub:
+                continue
+            try:
+                d = pub.date() if hasattr(pub, 'date') else _dt.datetime.fromisoformat(str(pub)).date()
+                if d == today:
+                    posts_today += 1
+            except Exception:
+                continue
+
+        return 200, {
+            'pending_review': len(drafts),
+            'published_total': len(published),
+            'rejected_total': len(rejected),
+            'posts_today': posts_today,
+            'active_sources': sum(1 for s in sources if s.get('active')),
+            'total_sources': len(sources),
+        }
+    except Exception as e:
+        log.error(f'[StudioAPI] get_dashboard_stats: {e}')
+        return 500, {'error': str(e)}
+
+
 # ── Review Queue (assets + reviews) ────────────────────────
 # AI post yaratganda TO'G'RIDAN-TO'G'RI kanalga yubormaydi — 'assets'ga
 # status='draft' bilan yoziladi (bu ishni main.py bajaradi). Bu yerdagi
@@ -220,6 +257,7 @@ GET_ROUTES = {
     '/api/studio/sources': lambda project_id, _q: list_sources(project_id),
     '/api/studio/config':  lambda project_id, _q: get_config(project_id),
     '/api/studio/assets':  lambda project_id, q: list_assets(project_id, q),
+    '/api/studio/stats':   lambda project_id, _q: get_dashboard_stats(project_id),
 }
 
 # POST: (project_id, body_dict) -> (status, payload)
