@@ -452,41 +452,66 @@ STUDIO_HTML = """<!DOCTYPE html>
   }
 
   async function saveAsset(id) {
-    const content = document.getElementById('rp-content').value;
-    const res = await fetch('/api/studio/assets/update', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ id, content })
-    });
-    const data = await res.json();
-    if (!res.ok) { toast(data.error || 'Xatolik'); return; }
-    toast('Saqlandi');
+    try {
+      const res = await fetch('/api/studio/assets/update', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id, content: document.getElementById('rp-content').value })
+      });
+      const data = await res.json();
+      if (!res.ok) { toast('Saqlashda xato: ' + (data.error || res.status)); return false; }
+      toast('Saqlandi');
+      return true;
+    } catch (e) {
+      console.error('[saveAsset]', e);
+      toast('Saqlashda tarmoq xatosi: ' + e.message);
+      return false;
+    }
   }
 
   async function approveAsset(id) {
     if (!confirm('Bu post kanalga yuboriladi. Tasdiqlaysizmi?')) return;
-    await saveAsset(id);
-    const res = await fetch('/api/studio/assets/approve', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ id })
-    });
-    const data = await res.json();
-    if (!res.ok) { toast(data.error || 'Xatolik'); return; }
-    toast('Kanalga yuborildi ✅');
-    document.getElementById('rightpanel').innerHTML = '<div class="rp-empty"><div>Postni tanlang — tafsilotlar shu yerda ko\\'rinadi</div></div>';
-    refreshCurrentLists();
+    try {
+      const saved = await saveAsset(id);
+      if (!saved) return;
+      const res = await fetch('/api/studio/assets/approve', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        console.error('[approveAsset] server error', res.status, data);
+        toast('Yuborishda xato: ' + (data.error || res.status));
+        return;
+      }
+      toast('Kanalga yuborildi ✅');
+      document.getElementById('rightpanel').innerHTML = '<div class="rp-empty"><div>Postni tanlang — tafsilotlar shu yerda ko\\'rinadi</div></div>';
+      refreshCurrentLists();
+    } catch (e) {
+      console.error('[approveAsset] exception', e);
+      toast('Kutilmagan xato: ' + e.message);
+    }
   }
 
   async function rejectAsset(id) {
     if (!confirm('Bu postni rad etasizmi?')) return;
-    const res = await fetch('/api/studio/assets/reject', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ id })
-    });
-    const data = await res.json();
-    if (!res.ok) { toast(data.error || 'Xatolik'); return; }
-    toast('Rad etildi');
-    document.getElementById('rightpanel').innerHTML = '<div class="rp-empty"><div>Postni tanlang — tafsilotlar shu yerda ko\\'rinadi</div></div>';
-    refreshCurrentLists();
+    try {
+      const res = await fetch('/api/studio/assets/reject', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        console.error('[rejectAsset] server error', res.status, data);
+        toast('Rad etishda xato: ' + (data.error || res.status));
+        return;
+      }
+      toast('Rad etildi');
+      document.getElementById('rightpanel').innerHTML = '<div class="rp-empty"><div>Postni tanlang — tafsilotlar shu yerda ko\\'rinadi</div></div>';
+      refreshCurrentLists();
+    } catch (e) {
+      console.error('[rejectAsset] exception', e);
+      toast('Kutilmagan xato: ' + e.message);
+    }
   }
 
   async function submitManual() {
