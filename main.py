@@ -17,7 +17,7 @@ from database import (
     is_processed, mark_processed, clear_cache, get_stats, init_db,
     get_recent_posts, get_today_api_calls, increment_api_calls,
 )
-from feeds import fetch_news, fetch_og_image, DEFAULT_RSS_FEEDS
+from feeds import fetch_news, fetch_article_image, DEFAULT_RSS_FEEDS
 from workflows.rss_news import (
     generate_post, DEFAULT_TERMINOLOGY, DEFAULT_NICKNAMES,
     DEFAULT_CHANNEL_TAG, DEFAULT_TONE,
@@ -152,7 +152,7 @@ def auto_news_post() -> bool:
                 mark_processed(article['url'], article['title'], article['score'])
                 continue
 
-            image_url = fetch_og_image(article['url']) if article.get('url') else None
+            image_url = fetch_article_image(article['url']) if article.get('url') else None
             log.info(f'[Auto] Rasm: {image_url[:60] if image_url else "yoq"}')
 
             # MUHIM: bu yerda kanalga TO'G'RIDAN-TO'G'RI yuborilmaydi.
