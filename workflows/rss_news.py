@@ -23,6 +23,7 @@ from google.genai.errors import ClientError, ServerError
 import database
 from config import GEMINI_KEY, GEMINI_MODEL
 from feeds import fetch_article_text
+from telegram_utils import sanitize_telegram_html
 
 log = logging.getLogger(__name__)
 gemini_client = genai.Client(api_key=GEMINI_KEY)
@@ -421,5 +422,12 @@ def generate_post(article: dict, project_id: int) -> str:
     if not ok:
         log.warning(f'[Validator] Rad: {reason} — original post qaytarildi')
         post = ensure_channel_tag(raw_post, channel_tag)
+
+    # AI ba'zan <br> kabi HTML teglarini yozib qo'yadi (Telegram HTML
+    # parse-mode uslubini "eslab qolgani" bo'lsa kerak). Buni faqat
+    # kanalga yuborish paytida emas, DARHOL shu yerda tozalaymiz — shunda
+    # DB'da saqlanadigan va Dashboard'da ko'rinadigan matn ham har doim
+    # toza bo'ladi (<br> -> yangi qator).
+    post = sanitize_telegram_html(post)
 
     return apply_names(post, terminology)
