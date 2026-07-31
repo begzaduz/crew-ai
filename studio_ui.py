@@ -338,6 +338,7 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   // ── Dashboard ────────────────────────────────────────────
   let assetCache = {};
+  let lastPendingCount = null; // polling: yangi draft kelganda bildirish uchun
 
   async function loadStats() {
     try {
@@ -354,6 +355,13 @@ STUDIO_HTML = """<!DOCTYPE html>
       document.getElementById('nav-count-published').textContent = s.published_total ?? 0;
       document.getElementById('nav-count-rejected').textContent = s.rejected_total ?? 0;
       document.getElementById('nav-count-sources').textContent = s.total_sources ?? 0;
+
+      if (typeof s.pending_review === 'number') {
+        if (lastPendingCount !== null && s.pending_review > lastPendingCount) {
+          toast('🆕 Yangi post Review Queue-ga qo\\'shildi');
+        }
+        lastPendingCount = s.pending_review;
+      }
     } catch (e) {
       toast('Statistika yuklanmadi');
     }
@@ -683,9 +691,30 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
   }
 
+  // ── Polling — fon jarayoni (RSS avtomatik post qo'shishi,
+  // boshqa admin tasdiqlashi va h.k.) natijalarini sahifani qo'lda
+  // yangilamasdan ko'rsatish uchun. Tab fonda bo'lganda (document.hidden)
+  // so'rov yubormaydi — resurs tejash uchun. Tab qayta ochilganda darhol
+  // bir marta yangilaydi.
+  const POLL_INTERVAL_MS = 25000;
+  let pollTimer = null;
+
+  function startPolling() {
+    if (pollTimer) return;
+    pollTimer = setInterval(() => {
+      if (document.hidden) return;
+      refreshCurrentLists();
+    }, POLL_INTERVAL_MS);
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) refreshCurrentLists();
+  });
+
   // ── Boot ───────────────────────────────────────────────
   loadStats();
   loadActivityFeed();
+  startPolling();
 </script>
 </body>
 </html>
