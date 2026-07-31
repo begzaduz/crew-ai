@@ -273,7 +273,7 @@ def fetch_article_text(url: str) -> str | None:
         if downloaded:
             text = trafilatura.extract(downloaded, include_comments=False, include_tables=False)
             if text and len(text) > 100:
-                return text[:1500]
+                return text[:2500]
     except ImportError:
         pass
     except Exception as e:
@@ -288,7 +288,7 @@ def fetch_article_text(url: str) -> str | None:
         res.raise_for_status()
         import re as _re
         md = markdownify(res.text, heading_style='ATX', strip=['script', 'style', 'nav', 'footer'])
-        return _re.sub(r'\n{3,}', '\n\n', md).strip()[:1500]
+        return _re.sub(r'\n{3,}', '\n\n', md).strip()[:2500]
     except Exception as e:
         log.warning(f'[FetchText] {url}: {e}')
         return None

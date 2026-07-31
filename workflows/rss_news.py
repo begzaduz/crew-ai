@@ -219,8 +219,8 @@ def researcher_agent(article: dict) -> str:
 
     result = groq_call(
         RESEARCHER_PROMPT,
-        f"Analyze this Premier League news:\n\nHEADLINE: {article['title']}\nCONTENT: {content[:1200]}",
-        temperature=0.2, max_tokens=300,
+        f"Analyze this Premier League news:\n\nHEADLINE: {article['title']}\nCONTENT: {content[:2200]}",
+        temperature=0.2, max_tokens=450,
     )
     log.info(f'[Researcher] ✓ {article["title"][:50]}')
     return result
@@ -359,7 +359,7 @@ def writer_agent(article: dict, facts: str, nicknames: dict, channel_tag: str, t
     result = groq_call(
         prompt,
         f"Yangilik yoz:\n\nSARLAVHA: {article['title']}\nFAKTLAR:\n{facts}\n\nFaqat postni yoz:",
-        temperature=0.5, max_tokens=600,
+        temperature=0.5, max_tokens=700,
     )
     log.info(f'[Writer] ✓ {len(result)} belgi')
     return result
@@ -386,7 +386,7 @@ def editor_agent(post: str, title: str, channel_tag: str) -> str:
     result = groq_call(
         prompt,
         f"Review this Uzbek post about: {title}\n\nPOST:\n{post}",
-        temperature=0.2, max_tokens=700,
+        temperature=0.2, max_tokens=800,
     )
     if 'APPROVED' in result:
         log.info('[Editor] ✓ Tasdiqlandi')
