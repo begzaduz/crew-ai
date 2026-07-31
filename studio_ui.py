@@ -135,6 +135,16 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   .toast{ position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--surface-2); border:1px solid var(--border); color:#fff; padding:10px 18px; border-radius:8px; font-size:13px; opacity:0; transition:opacity .2s; pointer-events:none; z-index:100; }
   .toast.show{ opacity:1; }
+
+  /* Tasdiqlash modali (brauzer confirm()'ining o'rnini bosadi) */
+  .modal-overlay{ position:fixed; inset:0; background:rgba(10,18,36,.65); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; z-index:200; opacity:0; pointer-events:none; transition:opacity .15s ease; }
+  .modal-overlay.show{ opacity:1; pointer-events:auto; }
+  .modal-box{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:22px 24px; max-width:360px; width:90%; transform:translateY(6px); transition:transform .15s ease; box-shadow:0 12px 32px rgba(0,0,0,.4); }
+  .modal-overlay.show .modal-box{ transform:translateY(0); }
+  .modal-box h4{ font-size:15px; font-weight:700; margin-bottom:8px; }
+  .modal-box p{ font-size:13px; color:var(--text-dim); line-height:1.5; margin-bottom:20px; }
+  .modal-actions{ display:flex; gap:8px; justify-content:flex-end; }
+  .modal-actions .btn{ padding:8px 16px; }
 </style>
 </head>
 <body>
@@ -293,12 +303,43 @@ STUDIO_HTML = """<!DOCTYPE html>
 
 <div class="toast" id="toast"></div>
 
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal-box">
+    <h4 id="confirm-modal-title"></h4>
+    <p id="confirm-modal-message"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="_confirmModalAnswer(false)">Bekor qilish</button>
+      <button class="btn" id="confirm-modal-ok" onclick="_confirmModalAnswer(true)"></button>
+    </div>
+  </div>
+</div>
+
 <script>
   function toast(msg) {
     const t = document.getElementById('toast');
     t.textContent = msg;
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), 1800);
+  }
+
+  // ── Tasdiqlash modali (brauzer confirm()'i o'rniga) ──────
+  let _confirmResolve = null;
+
+  function showConfirmModal({ title, message, okLabel, okClass = 'btn-gold' }) {
+    return new Promise(resolve => {
+      _confirmResolve = resolve;
+      document.getElementById('confirm-modal-title').textContent = title;
+      document.getElementById('confirm-modal-message').textContent = message;
+      const okBtn = document.getElementById('confirm-modal-ok');
+      okBtn.textContent = okLabel;
+      okBtn.className = 'btn ' + okClass;
+      document.getElementById('confirm-modal').classList.add('show');
+    });
+  }
+
+  function _confirmModalAnswer(result) {
+    document.getElementById('confirm-modal').classList.remove('show');
+    if (_confirmResolve) { _confirmResolve(result); _confirmResolve = null; }
   }
 
   function escapeHtml(str) {
@@ -477,7 +518,13 @@ STUDIO_HTML = """<!DOCTYPE html>
   }
 
   async function approveAsset(id) {
-    if (!confirm('Bu post kanalga yuboriladi. Tasdiqlaysizmi?')) return;
+    const ok = await showConfirmModal({
+      title: 'Kanalga yuborish',
+      message: 'Bu post kanalga yuboriladi. Tasdiqlaysizmi?',
+      okLabel: 'Tasdiqlash va yuborish',
+      okClass: 'btn-gold',
+    });
+    if (!ok) return;
     try {
       const saved = await saveAsset(id);
       if (!saved) return;
@@ -501,7 +548,13 @@ STUDIO_HTML = """<!DOCTYPE html>
   }
 
   async function rejectAsset(id) {
-    if (!confirm('Bu postni rad etasizmi?')) return;
+    const ok = await showConfirmModal({
+      title: 'Postni rad etish',
+      message: 'Bu postni rad etasizmi?',
+      okLabel: 'Rad etish',
+      okClass: 'btn-danger',
+    });
+    if (!ok) return;
     try {
       const res = await fetch('/api/studio/assets/reject', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -594,7 +647,13 @@ STUDIO_HTML = """<!DOCTYPE html>
   }
 
   async function deleteSource(id) {
-    if (!confirm('Bu manbani butunlay o\\'chirib tashlaysizmi?')) return;
+    const ok = await showConfirmModal({
+      title: "Manbani o'chirish",
+      message: "Bu manbani butunlay o'chirib tashlaysizmi?",
+      okLabel: "O'chirish",
+      okClass: 'btn-danger',
+    });
+    if (!ok) return;
     await fetch('/api/studio/sources/delete', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ id })
