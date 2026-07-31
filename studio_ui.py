@@ -361,6 +361,18 @@ STUDIO_HTML = """<!DOCTYPE html>
     } catch (e) { return ''; }
   }
 
+  // Post qaysi RSS saytdan kelganini ko'rsatish uchun (bir nechta
+  // manba haqiqatan ham ishlayaptimi, yoki faqat bittasi natija
+  // beryaptimi — shuni Dashboard'da tezda ko'rish uchun).
+  function hostFromUrl(url) {
+    if (!url) return null;
+    try {
+      return new URL(url).hostname.replace(/^www\\./, '');
+    } catch (e) {
+      return null;
+    }
+  }
+
   // ── View switching ─────────────────────────────────────
   const viewLoaded = {};
   function switchView(name) {
@@ -449,17 +461,20 @@ STUDIO_HTML = """<!DOCTYPE html>
         el.innerHTML = '<div class="empty">Hozircha bu bo\\'limda post yo\\'q.</div>';
         return;
       }
-      el.innerHTML = items.map(a => `
+      el.innerHTML = items.map(a => {
+        const host = hostFromUrl(a.source_url);
+        return `
         <div class="q-card" data-id="${a.id}" onclick="openAsset(${a.id})">
           <div class="q-title">${escapeHtml((a.title || '').slice(0, 90))}</div>
           <div class="q-meta">
-            <span>${escapeHtml(a.type || '')}</span>
+            ${host ? '<span>🌐 ' + escapeHtml(host) + '</span>' : `<span>${escapeHtml(a.type || '')}</span>`}
             <span>${fmtTime(a.created_at)}</span>
             ${a.score ? '<span>ball: ' + a.score + '</span>' : ''}
           </div>
           <span class="status-chip ${a.status}">${a.status.toUpperCase()}</span>
         </div>
-      `).join('');
+      `;
+      }).join('');
     } catch (e) {
       el.innerHTML = '<div class="empty">Xatolik yuz berdi.</div>';
     }

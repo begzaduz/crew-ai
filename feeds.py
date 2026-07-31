@@ -208,9 +208,17 @@ def fetch_news(rss_feeds: list[str]) -> list[dict]:
     articles: list[dict] = []
     cutoff = datetime.now(timezone.utc) - timedelta(hours=ARTICLE_MAX_AGE_HOURS)
 
+    # Har bir manba nechta yangilik berayotganini (va nega ko'plari
+    # chetlanayotganini) ko'rish uchun — Railway loglarida ko'rinadi.
+    # Buni Dashboard'dagi "faqat bitta manba ishlayaptimi yoki bu
+    # tasodifmi" degan savolga javob berish uchun qo'shildi.
+    feed_stats: list[tuple[str, dict]] = []
+
     for feed_url in rss_feeds:
+        stats = {'jami': 0, 'eski': 0, 'mos_emas': 0, 'otdi': 0, 'xato': None}
         try:
             feed = feedparser.parse(feed_url)
+            stats['jami'] = len(feed.entries)
             for entry in feed.entries:
                 url = entry.get('link', '')
                 if not url or url in seen:
@@ -220,6 +228,7 @@ def fetch_news(rss_feeds: list[str]) -> list[dict]:
                 if published:
                     pub_dt = datetime(*published[:6], tzinfo=timezone.utc)
                     if pub_dt < cutoff:
+                        stats['eski'] += 1
                         continue
 
                 title = entry.get('title', '')
@@ -228,14 +237,28 @@ def fetch_news(rss_feeds: list[str]) -> list[dict]:
 
                 if score >= MIN_SCORE:
                     seen.add(url)
+                    stats['otdi'] += 1
                     articles.append({
                         'url': url,
                         'title': title,
                         'description': desc[:300],
                         'score': score,
                     })
+                else:
+                    stats['mos_emas'] += 1
         except Exception as e:
+            stats['xato'] = str(e)
             log.error(f'[RSS] {feed_url}: {e}')
+        feed_stats.append((feed_url, stats))
+
+    for feed_url, s in feed_stats:
+        if s['xato']:
+            log.info(f"[Feeds] {feed_url} -> XATO: {s['xato']}")
+        else:
+            log.info(
+                f"[Feeds] {feed_url} -> jami:{s['jami']} "
+                f"o'tdi:{s['otdi']} mos_emas:{s['mos_emas']} eski:{s['eski']}"
+            )
 
     articles.sort(key=lambda x: x['score'], reverse=True)
     log.info(f'[Feeds] Topildi: {len(articles)} ta yangilik ({len(rss_feeds)} ta manbadan)')
