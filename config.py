@@ -24,6 +24,11 @@ GEMINI_MODEL = 'gemini-2.5-flash'
 # ── Football-data.org ─────────────────────────────────────
 FOOTBALL_DATA_KEY = os.getenv('FOOTBALL_DATA_KEY', '')
 
+# ── Studio Lab Dashboard autentifikatsiyasi (Basic Auth) ──
+# /studio va /api/studio/* shu login+parol bilan himoyalanadi.
+DASHBOARD_USER     = os.getenv('DASHBOARD_USER', 'admin')
+DASHBOARD_PASSWORD = os.getenv('DASHBOARD_PASSWORD', '')
+
 # ── Server ────────────────────────────────────────────────
 PORT = int(os.getenv('PORT', 8080))
 
@@ -44,3 +49,5 @@ if not ADMIN_IDS:
     raise RuntimeError('ADMIN_IDS .env da topilmadi! (Telegram ID raqamlar, vergul bilan)')
 if not WEBHOOK_SECRET:
     raise RuntimeError('WEBHOOK_SECRET .env da topilmadi! (o\'zingiz tasodifiy uzun matn o\'ylab toping)')
+if not DASHBOARD_PASSWORD:
+    raise RuntimeError('DASHBOARD_PASSWORD .env da topilmadi! (Studio Lab Dashboard himoyasi uchun kerak)')

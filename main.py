@@ -1,13 +1,17 @@
 import json
 import time
 import hmac
+import base64
 import logging
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from urllib.parse import urlparse, parse_qs
 
-from config import ADMIN_IDS, PORT, INTERVAL, WEBHOOK_SECRET, DAILY_POST_BUDGET
+from config import (
+    ADMIN_IDS, PORT, INTERVAL, WEBHOOK_SECRET, DAILY_POST_BUDGET,
+    DASHBOARD_USER, DASHBOARD_PASSWORD,
+)
 import database
 from database import (
     is_processed, mark_processed, clear_cache, get_stats, init_db,
@@ -59,6 +63,23 @@ def _bootstrap_project() -> int:
         default_sources=DEFAULT_RSS_FEEDS,
     )
     return project['id']
+
+
+# ── Studio Lab Dashboard autentifikatsiyasi (Basic Auth) ──
+# /studio sahifasi va /api/studio/* barcha endpointlari shu bilan
+# himoyalanadi. Brauzer 'Authorization: Basic ...' headerini avtomatik
+# yuboradi (login/parol so'ragan standart oyna orqali) — alohida login
+# sahifa yoki sessiya/cookie kodi kerak emas.
+def _check_dashboard_auth(headers) -> bool:
+    auth_header = headers.get('Authorization', '')
+    if not auth_header.startswith('Basic '):
+        return False
+    try:
+        decoded = base64.b64decode(auth_header[6:]).decode('utf-8')
+        user, _, pwd = decoded.partition(':')
+    except Exception:
+        return False
+    return hmac.compare_digest(user, DASHBOARD_USER) and hmac.compare_digest(pwd, DASHBOARD_PASSWORD)
 
 
 # ── Admin tekshiruvi ──────────────────────────────────────
@@ -276,6 +297,13 @@ class WebhookHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _deny_dashboard_auth(self) -> None:
+        self.send_response(401)
+        self.send_header('WWW-Authenticate', 'Basic realm="Studio Lab Dashboard"')
+        self.send_header('Content-Type', 'text/plain; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(b'Unauthorized')
+
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
@@ -284,6 +312,9 @@ class WebhookHandler(BaseHTTPRequestHandler):
         if path in studio_api.POST_ROUTES:
             length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(length)
+            if not _check_dashboard_auth(self.headers):
+                self._deny_dashboard_auth()
+                return
             try:
                 data = json.loads(body) if body else {}
             except Exception:
@@ -322,6 +353,9 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
         # ── Studio Dashboard API (o'qish) ──────────────────────────────
         if path in studio_api.GET_ROUTES:
+            if not _check_dashboard_auth(self.headers):
+                self._deny_dashboard_auth()
+                return
             qs = parse_qs(parsed.query)
             query = {k: v[0] for k, v in qs.items()}
             try:
@@ -334,6 +368,9 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
         # ── Studio Dashboard sahifasi ───────────────────────────────────
         if path in ('/studio', '/studio/', '/dashboard'):
+            if not _check_dashboard_auth(self.headers):
+                self._deny_dashboard_auth()
+                return
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
             self.end_headers()
