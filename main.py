@@ -134,61 +134,64 @@ def is_admin(chat_id: int) -> bool:
 
 
 # ── Kunlik API byudjetini tekshirish ──────────────────────
-def _quota_available() -> tuple[bool, int, int]:
-    """(mavjudmi, ishlatilgan, limit) qaytaradi."""
-    used = get_today_api_calls()
+def _quota_available(project_id: int) -> tuple[bool, int, int]:
+    """(mavjudmi, ishlatilgan, limit) qaytaradi — HAR LOYIHA UCHUN ALOHIDA
+    (Superside'dagi har mijozga alohida byudjet tamoyiliga mos)."""
+    used = get_today_api_calls(project_id)
     return used < DAILY_API_LIMIT, used, DAILY_API_LIMIT
 
 
 # ── Auto yangilik yuborish ────────────────────────────────
-def auto_news_post() -> bool:
+def auto_news_post(project_id: int) -> bool:
+    """Berilgan loyiha uchun RSS manbalardan yangilik qidiradi va Review
+    Queue'ga qo'shadi. Kvota va manbalar shu loyihaga xos."""
     if not _news_lock.acquire(blocking=False):
         log.info('[Auto] Boshqa jarayon allaqachon ishlayapti, o\'tkazib yuborildi.')
         return False
 
     try:
-        ok, used, limit = _quota_available()
+        ok, used, limit = _quota_available(project_id)
         if not ok:
-            log.info(f'[Auto] Kunlik API byudjeti tugagan ({used}/{limit}). O\'tkazib yuborildi.')
+            log.info(f'[Auto] (loyiha={project_id}) Kunlik API byudjeti tugagan ({used}/{limit}). O\'tkazib yuborildi.')
             return False
 
         # RSS manbalar endi kod ichidan emas, DB'dagi data_sources
         # jadvalidan olinadi — Dashboard'da qo'shilgan/o'chirilgan
         # manba shu yerda darhol amalda qo'llaniladi.
-        sources = database.get_data_sources(PROJECT_ID, active_only=True)
+        sources = database.get_data_sources(project_id, active_only=True)
         urls = [s['url'] for s in sources]
         if not urls:
-            log.warning('[Auto] Faol RSS manbalar yo\'q (data_sources bo\'sh). O\'tkazib yuborildi.')
+            log.info(f'[Auto] (loyiha={project_id}) Faol RSS manbalar yo\'q. O\'tkazib yuborildi.')
             return False
 
-        log.info(f'[Auto] Yangilik qidirilmoqda ({len(urls)} ta manbadan)...')
+        log.info(f'[Auto] (loyiha={project_id}) Yangilik qidirilmoqda ({len(urls)} ta manbadan)...')
         articles = fetch_news(urls)
         if not articles:
-            log.info('[Auto] Yangilik topilmadi.')
+            log.info(f'[Auto] (loyiha={project_id}) Yangilik topilmadi.')
             return False
 
         for article in articles:
             if is_processed(article['url']):
                 continue
 
-            ok, used, limit = _quota_available()
+            ok, used, limit = _quota_available(project_id)
             if not ok:
-                log.info(f'[Auto] Kunlik API byudjeti tugadi ({used}/{limit}). To\'xtatildi.')
+                log.info(f'[Auto] (loyiha={project_id}) Kunlik API byudjeti tugadi ({used}/{limit}). To\'xtatildi.')
                 return False
 
-            log.info(f'[Auto] Qayta ishlanmoqda (score:{article["score"]}): {article["title"][:60]}')
+            log.info(f'[Auto] (loyiha={project_id}) Qayta ishlanmoqda (score:{article["score"]}): {article["title"][:60]}')
             try:
-                post = generate_post(article, PROJECT_ID)
-                increment_api_calls(CALLS_PER_POST)
+                post = generate_post(article, project_id)
+                increment_api_calls(project_id, CALLS_PER_POST)
             except Exception as e:
-                increment_api_calls(CALLS_PER_POST)
+                increment_api_calls(project_id, CALLS_PER_POST)
                 err = str(e)
                 is_quota = '429' in err or 'RESOURCE_EXHAUSTED' in err
                 if is_quota:
-                    log.error('[Auto] Gemini kvotasi tugadi. To\'xtatildi.')
-                    notify_admins('⚠️ Gemini API kvotasi tugadi. Ertaga (Pacific vaqti bo\'yicha) avtomatik tiklanadi.')
+                    log.error(f'[Auto] (loyiha={project_id}) Gemini kvotasi tugadi. To\'xtatildi.')
+                    notify_admins(f'⚠️ Gemini API kvotasi tugadi (loyiha={project_id}). Ertaga (Pacific vaqti bo\'yicha) avtomatik tiklanadi.')
                     return False
-                log.error(f'[Auto] AI xato: {e}')
+                log.error(f'[Auto] (loyiha={project_id}) AI xato: {e}')
                 mark_processed(article['url'], article['title'], article['score'])
                 continue
 
@@ -205,7 +208,7 @@ def auto_news_post() -> bool:
             # bo'lsa tahrirlaydi, va faqat TASDIQLAGANDAN keyin
             # (studio_api.approve_asset) kanalga jo'naydi.
             database.create_asset(
-                project_id=PROJECT_ID,
+                project_id=project_id,
                 source_url=article['url'],
                 asset_type='rss_news',
                 title=article['title'],
@@ -214,10 +217,10 @@ def auto_news_post() -> bool:
                 image_url=image_url,
             )
             mark_processed(article['url'], article['title'], article['score'])
-            log.info(f'[Auto] ✅ Review Queue-ga qo\'shildi: {article["title"][:60]}')
+            log.info(f'[Auto] (loyiha={project_id}) ✅ Review Queue-ga qo\'shildi: {article["title"][:60]}')
             return True
 
-        log.info('[Auto] Barcha yangiliklar allaqachon qayta ishlangan.')
+        log.info(f'[Auto] (loyiha={project_id}) Barcha yangiliklar allaqachon qayta ishlangan.')
         return False
     finally:
         _news_lock.release()
@@ -276,18 +279,18 @@ def handle_update(update: dict) -> None:
             if not is_admin(chat_id):
                 tg_send(chat_id, '⛔ Faqat adminlar uchun.')
                 return
-            ok_quota, used, limit = _quota_available()
+            ok_quota, used, limit = _quota_available(PROJECT_ID)
             if not ok_quota:
                 tg_send(chat_id, f'⛔ Bugungi API byudjeti tugadi ({used}/{limit}). Ertaga (Pacific vaqti bo\'yicha) tiklanadi.')
                 return
             tg_send(chat_id, '⏳ Yangilik olinayapti (3 agent ishlaydi)...')
-            ok = auto_news_post()
+            ok = auto_news_post(PROJECT_ID)
             tg_send(chat_id, '✅ Review Queue-ga qo\'shildi! Tasdiqlash uchun Dashboard: /studio' if ok
                     else '❌ Yangi yangilik topilmadi (yoki kvota tugagan).')
 
         elif text == '/stat':
             cnt, avg = get_stats()
-            used, limit = get_today_api_calls(), DAILY_API_LIMIT
+            used, limit = get_today_api_calls(PROJECT_ID), DAILY_API_LIMIT
             tg_send(chat_id, f'📊 Bazada: {cnt} ta yangilik\nO\'rtacha ball: {avg}\n\n🔋 Bugungi API: {used}/{limit}')
 
         elif text == '/clearcache':
@@ -300,7 +303,7 @@ def handle_update(update: dict) -> None:
         elif text and not text.startswith('/'):
             if not is_admin(chat_id):
                 return
-            ok_quota, used, limit = _quota_available()
+            ok_quota, used, limit = _quota_available(PROJECT_ID)
             if not ok_quota:
                 tg_send(chat_id, f'⛔ Bugungi API byudjeti tugadi ({used}/{limit}). Ertaga (Pacific vaqti bo\'yicha) tiklanadi.')
                 return
@@ -310,7 +313,7 @@ def handle_update(update: dict) -> None:
                 # o'zbek tiliga tarjima qilib, kanalga mos formatga soladi.
                 article = {'title': text, 'description': '', 'url': None, 'score': 100}
                 post = generate_post(article, PROJECT_ID)
-                increment_api_calls(CALLS_PER_POST)
+                increment_api_calls(PROJECT_ID, CALLS_PER_POST)
                 # MUHIM: bu yerda kanalga yubormaymiz — Review Queue'ga
                 # qo'shamiz, tasdiqlash faqat Dashboard'da bo'ladi.
                 database.create_asset(
@@ -319,7 +322,7 @@ def handle_update(update: dict) -> None:
                 )
                 tg_send(chat_id, f'✅ Review Queue-ga qo\'shildi. Tasdiqlash uchun Dashboard: /studio\n\n{post}')
             except Exception as e:
-                increment_api_calls(CALLS_PER_POST)
+                increment_api_calls(PROJECT_ID, CALLS_PER_POST)
                 log.error(f'[Bot] Post yaratish xatosi: {e}')
                 tg_send(chat_id, f'❌ Xatolik: {e}')
 
@@ -470,10 +473,18 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
 # ── Background news loop ──────────────────────────────────
 def news_loop() -> None:
+    """Barcha loyihalarni birma-bir aylanib, har biri uchun RSS
+    yangiliklarni tekshiradi. Har loyihaning o'z kvotasi va manbalari
+    bo'lgani uchun bittasi ikkinchisiga xalaqit bermaydi."""
     time.sleep(10)
     while True:
         try:
-            auto_news_post()
+            projects = database.list_projects()
+            for project in projects:
+                try:
+                    auto_news_post(project['id'])
+                except Exception as e:
+                    log.error(f"[Loop] (loyiha={project['id']}) {e}")
         except Exception as e:
             log.error(f'[Loop] {e}')
         time.sleep(INTERVAL)

@@ -250,7 +250,7 @@ def submit_manual_content(project_id: int, data: dict) -> tuple[int, object]:
     if not text:
         return 400, {'error': 'text kerak'}
 
-    used = database.get_today_api_calls()
+    used = database.get_today_api_calls(project_id)
     if used >= DAILY_API_LIMIT:
         return 429, {'error': f"Kunlik API byudjeti tugagan ({used}/{DAILY_API_LIMIT})"}
 
@@ -258,7 +258,7 @@ def submit_manual_content(project_id: int, data: dict) -> tuple[int, object]:
         from workflows.rss_news import generate_post
         article = {'title': text[:120], 'description': '', 'url': None, 'score': 100}
         post = generate_post(article, project_id)
-        database.increment_api_calls(CALLS_PER_POST)
+        database.increment_api_calls(project_id, CALLS_PER_POST)
         asset = database.create_asset(
             project_id=project_id,
             source_url=None,
@@ -271,7 +271,7 @@ def submit_manual_content(project_id: int, data: dict) -> tuple[int, object]:
         log.info(f'[StudioAPI] Qo\'lda kiritilgan kontent Review Queue-ga qo\'shildi (asset #{asset["id"]}).')
         return 200, asset
     except Exception as e:
-        database.increment_api_calls(CALLS_PER_POST)
+        database.increment_api_calls(project_id, CALLS_PER_POST)
         log.error(f'[StudioAPI] submit_manual_content: {e}')
         return 500, {'error': str(e)}
 

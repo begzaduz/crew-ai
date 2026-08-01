@@ -55,12 +55,41 @@ def init_db() -> None:
             ''')
             # Gemini API kunlik chaqiruv sanoqchisi (RPD kvotasini oldindan
             # boshqarish uchun). Sana Pacific Time bo'yicha saqlanadi.
+            # MUHIM: HAR LOYIHA UCHUN ALOHIDA hisoblanadi (Superside'dagi
+            # har mijozga alohida byudjet tamoyiliga mos) — bitta loyihaning
+            # faolligi boshqa loyihaning kunlik kvotasini kamaytirmasin.
             cur.execute('''
                 CREATE TABLE IF NOT EXISTS daily_api_usage (
                     usage_date TEXT PRIMARY KEY,
                     call_count INTEGER DEFAULT 0
                 )
             ''')
+            cur.execute(
+                "ALTER TABLE daily_api_usage ADD COLUMN IF NOT EXISTS project_id INTEGER NOT NULL DEFAULT 0"
+            )
+            # Bir martalik migratsiya: eski jadvalda PRIMARY KEY faqat
+            # usage_date ustunida edi (loyihalar mavjud bo'lmagan davrdan
+            # qolgan). Endi (usage_date, project_id) composite bo'lishi
+            # kerak — aks holda bir xil sanada ikkita turli loyiha uchun
+            # qator qo'shib bo'lmaydi. Bu blok idempotent: eski, yagona
+            # ustunli PRIMARY KEY topilmasa (ya'ni migratsiya allaqachon
+            # bajarilgan bo'lsa), hech narsa qilmaydi.
+            cur.execute('''
+                SELECT tc.constraint_name
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                  ON tc.constraint_name = kcu.constraint_name
+                 AND tc.table_schema = kcu.table_schema
+                WHERE tc.table_name = 'daily_api_usage'
+                  AND tc.constraint_type = 'PRIMARY KEY'
+                GROUP BY tc.constraint_name
+                HAVING COUNT(*) = 1 AND bool_and(kcu.column_name = 'usage_date')
+            ''')
+            old_pk = cur.fetchone()
+            if old_pk:
+                cur.execute(f'ALTER TABLE daily_api_usage DROP CONSTRAINT "{old_pk[0]}"')
+                cur.execute('ALTER TABLE daily_api_usage ADD PRIMARY KEY (usage_date, project_id)')
+                log.info('[DB] daily_api_usage: composite PRIMARY KEY (usage_date, project_id)ga ko\'chirildi.')
 
             # ── Studio Lab Dashboard uchun: loyihalar ────────────────
             # MUHIM: bu jadvallar ba'zi repo'larda studio_schema.py orqali
@@ -239,15 +268,16 @@ def _today_pacific() -> str:
         _put_conn(conn)
 
 
-def get_today_api_calls() -> int:
-    """Bugungi (Pacific Time) Gemini API chaqiruvlar sonini qaytaradi."""
+def get_today_api_calls(project_id: int) -> int:
+    """Berilgan loyihaning bugungi (Pacific Time) Gemini API chaqiruvlar
+    sonini qaytaradi — har loyiha alohida hisoblanadi."""
     today = _today_pacific()
     conn = _get_conn()
     try:
         with conn.cursor() as cur:
             cur.execute(
-                'SELECT call_count FROM daily_api_usage WHERE usage_date = %s',
-                (today,),
+                'SELECT call_count FROM daily_api_usage WHERE usage_date = %s AND project_id = %s',
+                (today, project_id),
             )
             row = cur.fetchone()
             return int(row[0]) if row else 0
@@ -255,18 +285,19 @@ def get_today_api_calls() -> int:
         _put_conn(conn)
 
 
-def increment_api_calls(n: int = 1) -> None:
-    """Bugungi (Pacific Time) API chaqiruvlar sonini n ga oshiradi."""
+def increment_api_calls(project_id: int, n: int = 1) -> None:
+    """Berilgan loyihaning bugungi (Pacific Time) API chaqiruvlar sonini
+    n ga oshiradi."""
     today = _today_pacific()
     conn = _get_conn()
     try:
         with conn.cursor() as cur:
             cur.execute(
-                '''INSERT INTO daily_api_usage (usage_date, call_count)
-                   VALUES (%s, %s)
-                   ON CONFLICT (usage_date)
+                '''INSERT INTO daily_api_usage (usage_date, project_id, call_count)
+                   VALUES (%s, %s, %s)
+                   ON CONFLICT (usage_date, project_id)
                    DO UPDATE SET call_count = daily_api_usage.call_count + %s''',
-                (today, n, n),
+                (today, project_id, n, n),
             )
         conn.commit()
     except Exception as e:
