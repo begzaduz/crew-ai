@@ -1,6 +1,7 @@
 import re
 import logging
 from datetime import datetime, timezone, timedelta
+from urllib.parse import urlsplit, urlunsplit
 
 import feedparser
 import requests
@@ -55,6 +56,22 @@ IMAGE_BLACKLIST = [
     'gossip', 'logo', 'badge', 'icon', 'avatar', 'placeholder',
     'generic', 'default', 'blank', 'sport/images/generic',
 ]
+
+
+def _normalize_url(url: str) -> str:
+    """Dublikatlarni aniqlash uchun URL'ni normallashtiradi: query
+    parametrlari (masalan ?utm_source=..., ?ref=...) va fragment olib
+    tashlanadi.
+
+    SABAB: ko'p sport saytlari bir xil maqolaga har safar boshqa
+    tracking parametr bilan RSS'da havola beradi (masalan
+    caughtoffside.com) — bu aks holda bir xil maqolani "yangi" deb
+    qayta ishlashga, natijada Review Queue'da dublikat postlarga olib
+    keladi (va behuda Gemini API xarajatiga)."""
+    if not url:
+        return url
+    parts = urlsplit(url)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, '', ''))
 
 
 def score_article(title: str, desc: str) -> int:
@@ -220,7 +237,7 @@ def fetch_news(rss_feeds: list[str]) -> list[dict]:
             feed = feedparser.parse(feed_url)
             stats['jami'] = len(feed.entries)
             for entry in feed.entries:
-                url = entry.get('link', '')
+                url = _normalize_url(entry.get('link', ''))
                 if not url or url in seen:
                     continue
 
