@@ -307,6 +307,18 @@ def get_or_create_project(slug: str, name: str) -> dict:
         _put_conn(conn)
 
 
+def list_projects() -> list[dict]:
+    """Barcha loyihalarni qaytaradi (eng eskisi birinchi — yaratilish
+    tartibida). Dashboard'dagi loyiha almashtirgich shundan foydalanadi."""
+    conn = _get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute('SELECT * FROM projects ORDER BY id')
+            return [dict(row) for row in cur.fetchall()]
+    finally:
+        _put_conn(conn)
+
+
 # ── Studio Lab: workflow config (terminology, nicknames, tone...) ─
 def get_workflow_config(project_id: int, wf_type: str = 'rss_news') -> dict:
     conn = _get_conn()

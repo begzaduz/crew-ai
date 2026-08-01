@@ -262,7 +262,29 @@ STUDIO_HTML = """<!DOCTYPE html>
       <div class="page-head"><h1>Knowledge Base</h1><p>AI shu ma'lumotlardan foydalanib post yozadi</p></div>
 
       <details class="kb-card" open>
-        <summary>Nomlar tarjimasi (klub/futbolchi) <span class="count" id="term-count"></span></summary>
+        <summary>Loyiha va kanal sozlamalari</summary>
+        <div style="margin-top:10px">
+          <span class="field-label">Soha tavsifi (AI shu sohaning tahlilchisi/muharriri sifatida yozadi)</span>
+          <input type="text" id="domain-description" placeholder="masalan: Premier League football" style="margin-bottom:10px">
+          <span class="field-label">Kanal nomi</span>
+          <input type="text" id="channel-tag" placeholder="@Inglizfutbol" style="margin-bottom:10px">
+          <span class="field-label">Uslub (tone)</span>
+          <textarea id="tone-field" placeholder="professional uslubda, aniq va ishonchli..." style="min-height:44px"></textarea>
+          <div style="margin-top:10px"><button class="btn btn-gold" onclick="saveChannelSettings()">Saqlash</button></div>
+        </div>
+      </details>
+
+      <details class="kb-card">
+        <summary>Kontent turlari <span class="count" id="ctypes-count"></span></summary>
+        <div id="ctypes-rows"></div>
+        <div style="display:flex; gap:8px; margin-top:8px">
+          <button class="btn btn-ghost" onclick="addListRow('ctypes-rows')">+ qator</button>
+          <button class="btn btn-gold" onclick="saveContentTypes()">Saqlash</button>
+        </div>
+      </details>
+
+      <details class="kb-card">
+        <summary>Nomlar tarjimasi (terminologiya) <span class="count" id="term-count"></span></summary>
         <div id="term-rows"></div>
         <div style="display:flex; gap:8px; margin-top:8px">
           <button class="btn btn-ghost" onclick="addTermRow('term-rows')">+ qator</button>
@@ -271,7 +293,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       </details>
 
       <details class="kb-card">
-        <summary>Klub taxalluslari <span class="count" id="nick-count"></span></summary>
+        <summary>Taxalluslar <span class="count" id="nick-count"></span></summary>
         <div id="nick-rows"></div>
         <div style="display:flex; gap:8px; margin-top:8px">
           <button class="btn btn-ghost" onclick="addTermRow('nick-rows')">+ qator</button>
@@ -280,13 +302,20 @@ STUDIO_HTML = """<!DOCTYPE html>
       </details>
 
       <details class="kb-card">
-        <summary>Kanal qoidalari</summary>
-        <div style="margin-top:10px">
-          <span class="field-label">Kanal nomi</span>
-          <input type="text" id="channel-tag" placeholder="@Inglizfutbol" style="margin-bottom:10px">
-          <span class="field-label">Uslub (tone)</span>
-          <textarea id="tone-field" placeholder="professional sport jurnalistikasi uslubida..." style="min-height:44px"></textarea>
-          <div style="margin-top:10px"><button class="btn btn-gold" onclick="saveChannelSettings()">Saqlash</button></div>
+        <summary>Maxsus atamalar (tarjima qoidalari) <span class="count" id="jargon-count"></span></summary>
+        <div id="jargon-rows"></div>
+        <div style="display:flex; gap:8px; margin-top:8px">
+          <button class="btn btn-ghost" onclick="addTermRow('jargon-rows')">+ qator</button>
+          <button class="btn btn-gold" onclick="saveJargon()">Saqlash</button>
+        </div>
+      </details>
+
+      <details class="kb-card">
+        <summary>Emoji lug'ati <span class="count" id="emoji-count"></span></summary>
+        <div id="emoji-rows"></div>
+        <div style="display:flex; gap:8px; margin-top:8px">
+          <button class="btn btn-ghost" onclick="addTermRow('emoji-rows')">+ qator</button>
+          <button class="btn btn-gold" onclick="saveEmojiLegend()">Saqlash</button>
         </div>
       </details>
     </div>
@@ -684,12 +713,12 @@ STUDIO_HTML = """<!DOCTYPE html>
     if (!entries.length) entries.push(['', '']);
     el.innerHTML = entries.map(([k, v]) => `
       <div class="term-row">
-        <input type="text" class="term-key" value="${escapeHtml(k)}" placeholder="Inglizcha">
-        <input type="text" class="term-val" value="${escapeHtml(v)}" placeholder="O'zbekcha">
+        <input type="text" class="term-key" value="${escapeHtml(k)}" placeholder="Kalit">
+        <input type="text" class="term-val" value="${escapeHtml(v)}" placeholder="Qiymat">
         <button class="btn btn-danger" onclick="this.closest('.term-row').remove()">✕</button>
       </div>
     `).join('');
-    const countEl = document.getElementById(containerId === 'term-rows' ? 'term-count' : 'nick-count');
+    const countEl = document.getElementById(containerId.replace('-rows', '-count'));
     if (countEl) countEl.textContent = entries.length ? `(${entries.length})` : '';
   }
 
@@ -716,6 +745,43 @@ STUDIO_HTML = """<!DOCTYPE html>
     return dict;
   }
 
+  // ── Oddiy ro'yxat muharriri (key-value emas, bitta qiymat/qator) —
+  // Kontent turlari kabi oddiy ro'yxatlar uchun ──────────────────────
+  function renderListRows(containerId, list) {
+    const el = document.getElementById(containerId);
+    const items = (list && list.length) ? list : [''];
+    el.innerHTML = items.map(v => `
+      <div class="term-row" style="grid-template-columns:1fr auto">
+        <input type="text" class="list-val" value="${escapeHtml(v)}" placeholder="masalan: TRANSFER">
+        <button class="btn btn-danger" onclick="this.closest('.term-row').remove()">✕</button>
+      </div>
+    `).join('');
+    const countEl = document.getElementById(containerId.replace('-rows', '-count'));
+    if (countEl) countEl.textContent = items.length ? `(${items.length})` : '';
+  }
+
+  function addListRow(containerId) {
+    const el = document.getElementById(containerId);
+    const row = document.createElement('div');
+    row.className = 'term-row';
+    row.style.gridTemplateColumns = '1fr auto';
+    row.innerHTML = `
+      <input type="text" class="list-val" placeholder="masalan: TRANSFER">
+      <button class="btn btn-danger" onclick="this.closest('.term-row').remove()">✕</button>
+    `;
+    el.appendChild(row);
+  }
+
+  function collectListRows(containerId) {
+    const el = document.getElementById(containerId);
+    const list = [];
+    el.querySelectorAll('.list-val').forEach(input => {
+      const v = input.value.trim();
+      if (v) list.push(v);
+    });
+    return list;
+  }
+
   async function saveTerminology() {
     const terminology = collectRows('term-rows');
     const res = await fetch('/api/studio/config', {
@@ -740,12 +806,49 @@ STUDIO_HTML = """<!DOCTYPE html>
     renderRows('nick-rows', nicknames);
   }
 
+  async function saveJargon() {
+    const jargon = collectRows('jargon-rows');
+    const res = await fetch('/api/studio/config', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ jargon })
+    });
+    const data = await res.json();
+    if (!res.ok) { toast(data.error || 'Xatolik'); return; }
+    toast('Saqlandi');
+    renderRows('jargon-rows', jargon);
+  }
+
+  async function saveEmojiLegend() {
+    const emoji_legend = collectRows('emoji-rows');
+    const res = await fetch('/api/studio/config', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ emoji_legend })
+    });
+    const data = await res.json();
+    if (!res.ok) { toast(data.error || 'Xatolik'); return; }
+    toast('Saqlandi');
+    renderRows('emoji-rows', emoji_legend);
+  }
+
+  async function saveContentTypes() {
+    const content_types = collectListRows('ctypes-rows');
+    const res = await fetch('/api/studio/config', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ content_types })
+    });
+    const data = await res.json();
+    if (!res.ok) { toast(data.error || 'Xatolik'); return; }
+    toast('Saqlandi');
+    renderListRows('ctypes-rows', content_types);
+  }
+
   async function saveChannelSettings() {
+    const domain_description = document.getElementById('domain-description').value.trim();
     const channel_tag = document.getElementById('channel-tag').value.trim();
     const tone = document.getElementById('tone-field').value.trim();
     const res = await fetch('/api/studio/config', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ channel_tag, tone })
+      body: JSON.stringify({ domain_description, channel_tag, tone })
     });
     const data = await res.json();
     if (!res.ok) { toast(data.error || 'Xatolik'); return; }
@@ -758,6 +861,10 @@ STUDIO_HTML = """<!DOCTYPE html>
       const cfg = await res.json();
       renderRows('term-rows', cfg.terminology);
       renderRows('nick-rows', cfg.nicknames);
+      renderRows('jargon-rows', cfg.jargon);
+      renderRows('emoji-rows', cfg.emoji_legend);
+      renderListRows('ctypes-rows', cfg.content_types);
+      document.getElementById('domain-description').value = cfg.domain_description || '';
       document.getElementById('channel-tag').value = cfg.channel_tag || '';
       document.getElementById('tone-field').value = cfg.tone || '';
     } catch (e) {

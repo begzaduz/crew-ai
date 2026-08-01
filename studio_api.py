@@ -80,17 +80,28 @@ def get_config(project_id: int) -> tuple[int, object]:
         return 500, {'error': str(e)}
 
 
-_ALLOWED_CONFIG_KEYS = {'terminology', 'nicknames', 'channel_tag', 'tone'}
+_ALLOWED_CONFIG_KEYS = {
+    'terminology', 'nicknames', 'channel_tag', 'tone',
+    'domain_description', 'content_types', 'jargon', 'emoji_legend',
+}
 
 
 def update_config(project_id: int, data: dict) -> tuple[int, object]:
     patch = {k: v for k, v in data.items() if k in _ALLOWED_CONFIG_KEYS}
     if not patch:
-        return 400, {'error': "saqlanadigan maydon topilmadi (terminology/nicknames/channel_tag/tone)"}
+        return 400, {'error': "saqlanadigan maydon topilmadi (" + ', '.join(sorted(_ALLOWED_CONFIG_KEYS)) + ")"}
     if 'terminology' in patch and not isinstance(patch['terminology'], dict):
         return 400, {'error': "terminology obyekt (key-value) bo'lishi kerak"}
     if 'nicknames' in patch and not isinstance(patch['nicknames'], dict):
         return 400, {'error': "nicknames obyekt (key-value) bo'lishi kerak"}
+    if 'jargon' in patch and not isinstance(patch['jargon'], dict):
+        return 400, {'error': "jargon obyekt (key-value) bo'lishi kerak"}
+    if 'emoji_legend' in patch and not isinstance(patch['emoji_legend'], dict):
+        return 400, {'error': "emoji_legend obyekt (key-value) bo'lishi kerak"}
+    if 'content_types' in patch and not isinstance(patch['content_types'], list):
+        return 400, {'error': "content_types massiv (list) bo'lishi kerak"}
+    if 'domain_description' in patch and not isinstance(patch['domain_description'], str):
+        return 400, {'error': "domain_description matn bo'lishi kerak"}
     try:
         cfg = database.update_workflow_config(project_id, patch)
         log.info(f'[StudioAPI] Config yangilandi (project={project_id}): {list(patch.keys())}')

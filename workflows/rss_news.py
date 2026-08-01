@@ -1,16 +1,21 @@
 """RSS Yangiliklar workflow — Researcher + Writer + Editor pipeline.
 
-MUHIM: Bu fayl eski agents.py o'rnini bosadi. Farqi shunda: terminologiya
-(klub/futbolchi tarjimalari), klub taxalluslari, kanal nomi va uslub endi
-kod ichida qotib qolmagan — ular DB'dagi workflows.config ustunidan
-(database.get_workflow_config) HAR BIR chaqiruvda o'qiladi. Demak
-Dashboard'da terminologiyani tahrirlab saqlasangiz, keyingi generate_post()
-chaqiruvi darhol yangi qiymatlarni ishlatadi — qayta deploy shart emas.
+MUHIM: Bu pipeline endi loyiha-agnostik (universal) — faqat "Ingliz
+Futboli"ga emas, istalgan mavzudagi (sport, texnologiya, moda va h.k.)
+loyihaga xizmat qila oladi. Loyihaga xos HAMMA narsa (terminologiya,
+taxalluslar, kanal, uslub, soha tavsifi, kontent turlari, maxsus
+atamalar, emoji) DB'dagi workflows.config ustunidan (database.
+get_workflow_config) HAR BIR chaqiruvda o'qiladi. Dashboard'da bularni
+tahrirlab saqlasangiz, keyingi generate_post() chaqiruvi darhol yangi
+qiymatlarni ishlatadi — qayta deploy shart emas.
 
-Static qism (prompt tuzilishi, formatlash qoidalari, futbol atamalari)
-ataylab kod ichida qoladi — bular "vazifa qoidalari", loyihadan-loyihaga
-o'zgarmaydi. Loyihaga xos narsalar (terminologiya, taxalluslar, kanal,
-uslub) parametr sifatida promptga quyiladi.
+Kod ichida FAQAT haqiqatan loyihadan-loyihaga o'zgarmaydigan "vazifa
+qoidalari" qoladi: prompt tuzilishi, formatlash qoidalari (bo'sh
+qatorlar, paragraf uzunligi, markdown taqiqi, sarlavha uzunligi va
+h.k.), til qoidalari. DEFAULT_* konstantalar esa faqat (a) "Ingliz
+Futboli" loyihasini birinchi marta urug'lantirish uchun, va (b) agar
+biror loyiha hali konfiguratsiya qilinmagan bo'lsa, oraliq fallback
+sifatida ishlatiladi.
 """
 import re
 import time
@@ -29,13 +34,46 @@ log = logging.getLogger(__name__)
 gemini_client = genai.Client(api_key=GEMINI_KEY)
 
 
-# ── Standart (seed) qiymatlar ──────────────────────────────
+# ── Standart (seed) qiymatlar — "Ingliz Futboli" loyihasi uchun ────
 # Bular FAQAT loyiha birinchi marta yaratilganda DB'ga yoziladi
-# (database.seed_project_if_empty). Runtime'da generate_post() bularni
-# emas, DB'dagi joriy config'ni ishlatadi.
+# (database.seed_project_if_empty), va agar boshqa bir loyiha hali
+# konfiguratsiya qilinmagan bo'lsa, oraliq fallback sifatida ishlaydi.
+# Runtime'da generate_post() avvalo DB'dagi joriy config'ni ishlatadi.
 DEFAULT_CHANNEL_TAG = '@Inglizfutbol'
 
 DEFAULT_TONE = "professional sport jurnalistikasi uslubida, aniq va ishonchli"
+
+DEFAULT_DOMAIN_DESCRIPTION = "Premier League football"
+
+DEFAULT_CONTENT_TYPES = [
+    'TRANSFER', 'MATCH_REPORT', 'PRE_MATCH', 'INJURY', 'OFFICIAL',
+    'INTERVIEW', 'STATISTICS', 'RECORD', 'SUSPENSION', 'TOURNAMENT',
+]
+
+DEFAULT_JARGON = {
+    'survival': 'qolish',
+    'stay up': 'qolish',
+    'relegation': 'past ligaga tushish',
+    'relegation battle': 'pasayish kurashi',
+    'top four': "to'rtlik",
+    'title': 'chempionlik',
+    'title race': 'chempionlik kurashi',
+    'clean sheet': "darvozaga o'tkazmaslik",
+    'hat-trick': 'het-trik',
+    'penalty': 'jarima zarbasi',
+    'red card': 'qizil karta',
+}
+
+DEFAULT_EMOJI_LEGEND = {
+    '🚨': 'Muhim yangilik',
+    '🔥': 'Transfer',
+    '⚽': "O'yin natijasi",
+    '🏆': 'Sovrin',
+    '🤕': 'Jarohat',
+    '✅': 'Rasmiy',
+    '📊': 'Statistika',
+    '⭐': 'Yulduz futbolchi',
+}
 
 DEFAULT_TERMINOLOGY = {
     'Premier League': 'Premier-liga',
@@ -109,6 +147,31 @@ def apply_names(text: str, terminology: dict) -> str:
     return result
 
 
+# ── Loyihaga xos bloklarni promptga quyish uchun yordamchilar ──────
+def _jargon_block(jargon: dict, empty_text: str = '') -> str:
+    if not jargon:
+        return empty_text
+    return '\n'.join(f'- "{eng}" = "{uzb}"' for eng, uzb in jargon.items())
+
+
+def _content_types_block(content_types: list) -> str:
+    if not content_types:
+        return "(turlar belgilanmagan — mazmuniga qarab mos tarzda yoz)"
+    return '\n'.join(f'- {t}' for t in content_types)
+
+
+def _emoji_block(emoji_legend: dict) -> str:
+    if not emoji_legend:
+        return "🚨 Muhim yangilik\n✅ Rasmiy tasdiqlangan xabar\n📊 Statistika/raqamlar"
+    return '\n'.join(f'{emoji} {meaning}' for emoji, meaning in emoji_legend.items())
+
+
+def _nicknames_block(nicknames: dict) -> str:
+    if not nicknames:
+        return "(taxalluslar berilmagan — nomlarni asl holida qoldir)"
+    return '\n'.join(f'{eng} = {uzb}' for eng, uzb in nicknames.items())
+
+
 # ── Gemini API — kvota tejash uchun retry o'chirilgan ─────
 def groq_call(system_prompt: str, user_prompt: str,
               temperature: float = 0.4, max_tokens: int = 700) -> str:
@@ -180,28 +243,26 @@ def ensure_channel_tag(post: str, tag: str) -> str:
     return post
 
 
-# ── Agent 1: Researcher (static — faktlarni ajratib olish, vokabulyar
-# bilan bog'liq emas, shuning uchun loyihadan-loyihaga o'zgarmaydi) ─────
-RESEARCHER_PROMPT = """You are a Premier League football news analyst. Extract ONLY real facts from the article.
+# ── Agent 1: Researcher (STATIC qism — prompt tuzilishi, til qoidasi.
+# DINAMIK qism — {domain_description} va {jargon_rules_block}, DB'dan
+# keladi, loyihadan-loyihaga farq qiladi) ──────────────────────────
+RESEARCHER_PROMPT_TEMPLATE = """You are a {domain_description} news analyst. Extract ONLY real facts from the article.
 
 Extract exactly:
-1. MAIN: One sentence — who did what (club, player, action, result)
-2. STATS: Goals, minutes, assists, table position, points, transfer fee — or NONE
+1. MAIN: One sentence — who did what (subject, action, result)
+2. STATS: Numbers, metrics, or key figures mentioned — or NONE
 3. QUOTE: Exact quote with speaker name — or NONE
-4. CONTEXT: Next match, current table position, record, history — or NONE
-5. BREAKING: YES only for: confirmed transfer, manager sacked, season-ending injury, shock result. Otherwise NO
+4. CONTEXT: Background, history, upcoming events, related facts — or NONE
+5. BREAKING: YES only for major, urgent, or unusually significant news. Otherwise NO
 
 STRICT RULES:
 - Only facts from the article. Zero invented content.
-- "survival" = "qolish" (staying in league), NOT "quvayt"
-- "relegation battle" = "pasayish kurashi"
-- "top four" = "to'rtlik"
-- "title race" = "chempionlik kurashi"
+{jargon_rules_block}
 
 LANGUAGE RULE (CRITICAL):
 - Write MAIN, STATS, and CONTEXT entirely in Uzbek (Latin script), even though the source article is in English.
 - Do NOT copy English sentences or phrases from the article into these fields.
-- Club and player names may stay in their English form (they will be converted separately) — but all other words must be Uzbek.
+- Proper names (people, organizations, products, places) may stay in their original form (they will be converted separately) — but all other words must be Uzbek.
 - QUOTE may keep the original quoted words if translating would risk changing their meaning, but the speaker attribution should still read naturally.
 
 Respond EXACTLY in this format:
@@ -212,27 +273,32 @@ CONTEXT: [context or NONE, in Uzbek]
 BREAKING: [YES or NO]"""
 
 
-def researcher_agent(article: dict) -> str:
+def researcher_agent(article: dict, domain_description: str, jargon: dict) -> str:
     content = fetch_article_text(article['url']) or ''
     if len(content) < 100:
         content = f"{article['title']}\n{article['description']}"
 
+    prompt = RESEARCHER_PROMPT_TEMPLATE.format(
+        domain_description=domain_description,
+        jargon_rules_block=_jargon_block(jargon),
+    )
     result = groq_call(
-        RESEARCHER_PROMPT,
-        f"Analyze this Premier League news:\n\nHEADLINE: {article['title']}\nCONTENT: {content[:2200]}",
+        prompt,
+        f"Analyze this {domain_description} news:\n\nHEADLINE: {article['title']}\nCONTENT: {content[:2200]}",
         temperature=0.2, max_tokens=450,
     )
     log.info(f'[Researcher] ✓ {article["title"][:50]}')
     return result
 
 
-# ── Agent 2: Writer (loyihaga xos qismlar — taxalluslar, kanal, uslub —
-# {placeholder} orqali quyiladi, DB'dan keladi) ───────────────────────
-WRITER_PROMPT_TEMPLATE = """Sen {channel_tag} Telegram kanali uchun professional sport muharriri va jurnalistisan.
+# ── Agent 2: Writer (STATIC qism — format/uslub qoidalari. DINAMIK
+# qism — soha, kontent turlari, emoji, taxalluslar, atamalar, kanal,
+# uslub — barchasi DB'dan {placeholder} orqali quyiladi) ───────────
+WRITER_PROMPT_TEMPLATE = """Sen {channel_tag} Telegram kanali uchun professional {domain_description} muharriri va jurnalistisan.
 
 VAZIFA
 
-Berilgan ma'lumotlardan qisqa, aniq va ishonchli sport yangiligi yarat.
+Berilgan ma'lumotlardan qisqa, aniq va ishonchli yangilik yarat.
 Uslub: {tone}.
 
 ASOSIY QOIDALAR
@@ -243,44 +309,22 @@ ASOSIY QOIDALAR
 - Mish-mishni rasmiy yangilik sifatida ko'rsatma.
 - Sonlar, sanalar va statistikalarni o'zgartirma.
 - Eng muhim ma'lumot birinchi paragrafda bo'lsin.
-- Professional sport jurnalistikasi uslubida yoz.
+- Professional jurnalistika uslubida yoz.
 - Telegram uchun o'qilishi qulay format ishlat.
 - Sun'iy iboralar va ortiqcha gaplardan qoch.
 - Agar eng muhim faktni 15 ta so'z ichida aytish mumkin bo'lsa, uni birinchi jumlada ayt.
 
 YANGILIK TURLARI
 
-- TRANSFER
-- MATCH_REPORT
-- PRE_MATCH
-- INJURY
-- OFFICIAL
-- INTERVIEW
-- STATISTICS
-- RECORD
-- SUSPENSION
-- TOURNAMENT
+{content_types_block}
 
 BREAKING
 
-Faqat juda muhim va yangi yangiliklarda ishlat:
-
-- Transfer tasdiqlansa
-- Murabbiy iste'fosi
-- Katta jarohat
-- Rasmiy tayinlov
-- Rekord darajadagi voqea
+Faqat juda muhim, kutilmagan yoki og'irligi yuqori yangiliklarda ishlat.
 
 EMOJI
 
-🚨 Muhim yangilik
-🔥 Transfer
-⚽ O'yin natijasi
-🏆 Sovrin
-🤕 Jarohat
-✅ Rasmiy
-📊 Statistika
-⭐ Yulduz futbolchi
+{emoji_block}
 
 SARLAVHA
 
@@ -291,22 +335,15 @@ SARLAVHA
 - Senga "SARLAVHA:" nomi bilan berilgan matn — bu manbaning ASL (ko'pincha ingliz tilidagi) sarlavhasi, faqat mazmunni tushunish uchun berilgan
 - Uni SO'ZMA-SO'Z yoki QISMAN ko'chirish QATʼIYAN TAQIQLANADI
 - O'zing FAKTLAR asosida to'liq YANGI, original o'zbekcha sarlavha yoz
-- Sarlavhada bitta ham ingliz so'zi yoki iborasi bo'lmasligi kerak (klub/futbolchi nomlaridan tashqari)
+- Sarlavhada bitta ham ingliz so'zi yoki iborasi bo'lmasligi kerak (nomlardan tashqari)
 
-KLUB TAXALLUSLARI
+TAXALLUSLAR
 
 {nicknames_block}
 
-FUTBOL ATAMALAR
+MAXSUS ATAMALAR
 
-- "survival" / "stay up" = "qolish", "ligada qolish"
-- "relegation" = "past ligaga tushish"
-- "top four" = "to'rtlik"
-- "title" = "chempionlik"
-- "clean sheet" = "darvozaga o'tkazmaslik"
-- "hat-trick" = "het-trik"
-- "penalty" = "jarima zarbasi"
-- "red card" = "qizil karta"
+{jargon_block}
 
 FORMAT
 
@@ -344,17 +381,17 @@ Hech qanday izoh yozma.
 Hech qanday markdown ishlatma."""
 
 
-def _nicknames_block(nicknames: dict) -> str:
-    if not nicknames:
-        return "(taxalluslar berilmagan — klub nomlarini asl holida qoldir)"
-    return '\n'.join(f'{eng} = {uzb}' for eng, uzb in nicknames.items())
-
-
-def writer_agent(article: dict, facts: str, nicknames: dict, channel_tag: str, tone: str) -> str:
+def writer_agent(article: dict, facts: str, nicknames: dict, channel_tag: str, tone: str,
+                  domain_description: str, content_types: list, emoji_legend: dict,
+                  jargon: dict) -> str:
     prompt = WRITER_PROMPT_TEMPLATE.format(
         channel_tag=channel_tag,
         tone=tone,
+        domain_description=domain_description,
         nicknames_block=_nicknames_block(nicknames),
+        content_types_block=_content_types_block(content_types),
+        emoji_block=_emoji_block(emoji_legend),
+        jargon_block=_jargon_block(jargon, empty_text="(maxsus atamalar berilmagan)"),
     )
     result = groq_call(
         prompt,
@@ -365,10 +402,11 @@ def writer_agent(article: dict, facts: str, nicknames: dict, channel_tag: str, t
     return result
 
 
-# ── Agent 3: Editor (kanal nomi placeholder orqali quyiladi) ─────────
-EDITOR_PROMPT_TEMPLATE = """Sen qattiq o'zbek sport muharririsan. Postni tekshir:
+# ── Agent 3: Editor (to'liq STATIC — sifat nazorati qoidalari hech
+# qachon loyihadan-loyihaga o'zgarmaydi, faqat kanal nomi quyiladi) ──
+EDITOR_PROMPT_TEMPLATE = """Sen qattiq o'zbek muharrirsan. Postni tekshir:
 
-1. Sarlavha VA matn 100% o'zbek tilidami? (Klub/futbolchi ismidan tashqari BITTA HAM ingliz so'z yoki ibora bo'lmasligi kerak — bo'lsa, bu jiddiy xato, REJECTED qil)
+1. Sarlavha VA matn 100% o'zbek tilidami? (Nomlardan tashqari BITTA HAM ingliz so'z yoki ibora bo'lmasligi kerak — bo'lsa, bu jiddiy xato, REJECTED qil)
 2. Sarlavhadan keyin bo'sh qator bormi?
 3. Har paragraf orasida bo'sh qator bormi?
 4. Har paragraf 1-2 jumladan iborat?
@@ -404,17 +442,26 @@ def editor_agent(post: str, title: str, channel_tag: str) -> str:
 def generate_post(article: dict, project_id: int) -> str:
     """Berilgan loyiha (project_id) uchun DB'dagi joriy workflow config'ni
     o'qib, shu asosda post yaratadi. Config topilmasa (masalan hali
-    seed qilinmagan bo'lsa), DEFAULT_* qiymatlarga qaytadi."""
+    seed qilinmagan yoki hali sozlanmagan bo'lsa), DEFAULT_* qiymatlarga
+    (Ingliz Futboli uchun) qaytadi — bu faqat oraliq fallback, yangi
+    loyiha uchun Dashboard'dan o'ziga xos qiymatlar kiritilishi kerak."""
     config = database.get_workflow_config(project_id)
     terminology = config.get('terminology') or DEFAULT_TERMINOLOGY
     nicknames = config.get('nicknames') or DEFAULT_NICKNAMES
     channel_tag = config.get('channel_tag') or DEFAULT_CHANNEL_TAG
     tone = config.get('tone') or DEFAULT_TONE
+    domain_description = config.get('domain_description') or DEFAULT_DOMAIN_DESCRIPTION
+    content_types = config.get('content_types') or DEFAULT_CONTENT_TYPES
+    jargon = config.get('jargon') or DEFAULT_JARGON
+    emoji_legend = config.get('emoji_legend') or DEFAULT_EMOJI_LEGEND
 
     log.info(f'[Pipeline] Boshlandi (project_id={project_id}): {article["title"][:60]}')
 
-    facts = researcher_agent(article)
-    raw_post = writer_agent(article, facts, nicknames, channel_tag, tone)
+    facts = researcher_agent(article, domain_description, jargon)
+    raw_post = writer_agent(
+        article, facts, nicknames, channel_tag, tone,
+        domain_description, content_types, emoji_legend, jargon,
+    )
     edited = editor_agent(raw_post, article['title'], channel_tag)
 
     post = ensure_channel_tag(edited, channel_tag)

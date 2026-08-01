@@ -20,7 +20,8 @@ from database import (
 from feeds import fetch_news, fetch_article_image, DEFAULT_RSS_FEEDS
 from workflows.rss_news import (
     generate_post, DEFAULT_TERMINOLOGY, DEFAULT_NICKNAMES,
-    DEFAULT_CHANNEL_TAG, DEFAULT_TONE,
+    DEFAULT_CHANNEL_TAG, DEFAULT_TONE, DEFAULT_DOMAIN_DESCRIPTION,
+    DEFAULT_CONTENT_TYPES, DEFAULT_JARGON, DEFAULT_EMOJI_LEGEND,
 )
 from api_football import fetch_standings, fetch_matches_by_date
 from webapp import HTML_PAGE
@@ -48,9 +49,10 @@ PROJECT_ID: int | None = None
 
 def _bootstrap_project() -> int:
     """'Ingliz Futboli' loyihasini DB'da tayyorlaydi: project + workflow
-    config (terminologiya/taxalluslar/kanal/uslub) + data_sources (RSS
-    manbalar). Loyiha allaqachon mavjud bo'lsa, hech narsa qayta yozilmaydi
-    — Dashboard'dan kiritilgan o'zgarishlar saqlanib qoladi."""
+    config (terminologiya/taxalluslar/kanal/uslub/soha/turlar/atamalar/
+    emoji) + data_sources (RSS manbalar). Loyiha allaqachon mavjud bo'lsa,
+    hech narsa qayta yozilmaydi — Dashboard'dan kiritilgan o'zgarishlar
+    saqlanib qoladi."""
     project = database.seed_project_if_empty(
         slug=PROJECT_SLUG,
         name='Ingliz Futboli',
@@ -59,10 +61,37 @@ def _bootstrap_project() -> int:
             'nicknames': DEFAULT_NICKNAMES,
             'channel_tag': DEFAULT_CHANNEL_TAG,
             'tone': DEFAULT_TONE,
+            'domain_description': DEFAULT_DOMAIN_DESCRIPTION,
+            'content_types': DEFAULT_CONTENT_TYPES,
+            'jargon': DEFAULT_JARGON,
+            'emoji_legend': DEFAULT_EMOJI_LEGEND,
         },
         default_sources=DEFAULT_RSS_FEEDS,
     )
-    return project['id']
+    pid = project['id']
+
+    # KO'CHIRISH (bir martalik): loyiha bugungacha allaqachon mavjud
+    # bo'lgani uchun yuqoridagi seed_project_if_empty hech narsa
+    # yozmagan bo'lishi mumkin (config allaqachon to'ldirilgan edi).
+    # Universallashtirish bilan qo'shilgan YANGI maydonlar
+    # (domain_description/content_types/jargon/emoji_legend) esa eski
+    # config'da yo'q — ularni ALOHIDA, faqat YETISHMASA qo'shamiz
+    # (mavjud qiymatlarga tegmasdan).
+    current = database.get_workflow_config(pid)
+    missing_patch = {}
+    if 'domain_description' not in current:
+        missing_patch['domain_description'] = DEFAULT_DOMAIN_DESCRIPTION
+    if 'content_types' not in current:
+        missing_patch['content_types'] = DEFAULT_CONTENT_TYPES
+    if 'jargon' not in current:
+        missing_patch['jargon'] = DEFAULT_JARGON
+    if 'emoji_legend' not in current:
+        missing_patch['emoji_legend'] = DEFAULT_EMOJI_LEGEND
+    if missing_patch:
+        database.update_workflow_config(pid, missing_patch)
+        log.info(f"[Bootstrap] Yangi konfiguratsiya maydonlari qo'shildi: {list(missing_patch.keys())}")
+
+    return pid
 
 
 # ── Studio Lab Dashboard autentifikatsiyasi (Basic Auth) ──
