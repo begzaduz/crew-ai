@@ -121,6 +121,16 @@ def init_db() -> None:
             cur.execute("ALTER TABLE workflows ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'rss_news'")
             cur.execute("ALTER TABLE workflows ADD COLUMN IF NOT EXISTS config JSONB NOT NULL DEFAULT '{}'::jsonb")
             cur.execute("ALTER TABLE workflows ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()")
+            # MUHIM: 'workflow_type' — endi o'chirilgan studio_schema.py'dan
+            # meros qolgan dublikat ustun ('type' bilan bir xil ma'noda).
+            # Eski (production) bazalarda bu ustun studio_schema.py orqali
+            # allaqachon yaratilgan va ba'zan NOT NULL bo'lishi mumkin —
+            # shuning uchun kodni soddalashtirib bu ustunni butunlay
+            # e'tiborsiz qoldirish XAVFLI (eski bazada INSERT xato beradi).
+            # Buning o'rniga: YANGI (toza) bazalarda ham shu ustun mavjud
+            # bo'lishini kafolatlaymiz — shunda set_workflow_config()/
+            # update_workflow_config() ikkala holatda ham ishlaydi.
+            cur.execute("ALTER TABLE workflows ADD COLUMN IF NOT EXISTS workflow_type TEXT")
             cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_workflows_project_type ON workflows(project_id, type)")
 
             # Har bir loyihaning RSS (yoki boshqa turdagi) manbalari.
@@ -134,6 +144,17 @@ def init_db() -> None:
             cur.execute("ALTER TABLE data_sources ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'rss'")
             cur.execute("ALTER TABLE data_sources ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE")
             cur.execute("ALTER TABLE data_sources ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()")
+            # MUHIM: quyidagi uchtasi ('name', 'enabled', 'config') ham
+            # kerak — get_data_sources()/add_data_source()/
+            # set_data_source_active() aynan shu ustunlarga yozadi/o'qiydi
+            # (eski studio_schema.py'dan meros konvensiya: manzil 'url'
+            # ustunida EMAS, 'config' JSONB ichida, yoqilgan/o'chirilgani
+            # 'active' emas 'enabled'da saqlanadi — _normalize_source()
+            # ikkalasini ham qulaylik uchun tekislaydi). 'url'/'active'
+            # ustunlari yuqorida shunchaki orqaga moslik uchun saqlangan.
+            cur.execute("ALTER TABLE data_sources ADD COLUMN IF NOT EXISTS name TEXT")
+            cur.execute("ALTER TABLE data_sources ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE")
+            cur.execute("ALTER TABLE data_sources ADD COLUMN IF NOT EXISTS config JSONB NOT NULL DEFAULT '{}'::jsonb")
 
             # 'assets' va 'reviews' jadvallari allaqachon mavjud (studio_schema.py
             # orqali yaratilgan): assets(id, project_id, source_url, type, title,

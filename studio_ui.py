@@ -26,6 +26,10 @@ STUDIO_HTML = """<!DOCTYPE html>
   /* Sidebar */
   .sidebar{ background:var(--navy-deep); border-right:1px solid var(--border); overflow-y:auto; display:flex; flex-direction:column; }
   .brand{ display:flex; align-items:center; gap:10px; padding:20px 18px 16px; border-bottom:1px solid var(--border); }
+  .project-switcher{ display:flex; gap:6px; padding:12px 18px; border-bottom:1px solid var(--border); }
+  .project-switcher select{ flex:1; background:var(--surface); border:1px solid var(--border); border-radius:7px; color:var(--text); font-size:12.5px; padding:7px 8px; font-family:inherit; }
+  .project-switcher select:focus{ outline:none; border-color:var(--gold); }
+  .project-switcher .btn{ padding:0 12px; font-size:15px; line-height:1; }
   .brand-mark{ width:28px; height:28px; border-radius:8px; background:linear-gradient(135deg,var(--gold),#c99a2e); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; color:var(--navy-deep); flex-shrink:0; }
   .brand-name{ font-size:15px; font-weight:600; }
   .brand-name span{ font-weight:200; }
@@ -155,6 +159,10 @@ STUDIO_HTML = """<!DOCTYPE html>
       <div class="brand-mark">SL</div>
       <div class="brand-name"><span>Studio</span> Lab</div>
     </div>
+    <div class="project-switcher">
+      <select id="project-select" onchange="switchProject(this.value)"></select>
+      <button class="btn btn-ghost" onclick="createNewProject()" title="Yangi loyiha">+</button>
+    </div>
     <nav class="groups">
       <div class="group">
         <div class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')">Dashboard</div>
@@ -178,7 +186,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         <div class="nav-item" data-view="studio" onclick="switchView('studio')">AI Content Studio</div>
       </div>
     </nav>
-    <div class="sidebar-foot"><span class="status-dot"></span> Ingliz Futboli loyihasi</div>
+    <div class="sidebar-foot"><span class="status-dot"></span> <span id="sidebar-foot-text">Yuklanmoqda...</span></div>
   </aside>
 
   <main>
@@ -266,7 +274,9 @@ STUDIO_HTML = """<!DOCTYPE html>
         <div style="margin-top:10px">
           <span class="field-label">Soha tavsifi (AI shu sohaning tahlilchisi/muharriri sifatida yozadi)</span>
           <input type="text" id="domain-description" placeholder="masalan: Premier League football" style="margin-bottom:10px">
-          <span class="field-label">Kanal nomi</span>
+          <span class="field-label">Telegram kanali (haqiqiy yuborish manzili — masalan @KanalNomi yoki -100...)</span>
+          <input type="text" id="telegram-channel-id" placeholder="@Inglizfutbol" style="margin-bottom:10px">
+          <span class="field-label">Kanal yorlig'i (postning oxiriga qo'shiladigan matn)</span>
           <input type="text" id="channel-tag" placeholder="@Inglizfutbol" style="margin-bottom:10px">
           <span class="field-label">Uslub (tone)</span>
           <textarea id="tone-field" placeholder="professional uslubda, aniq va ishonchli..." style="min-height:44px"></textarea>
@@ -336,6 +346,7 @@ STUDIO_HTML = """<!DOCTYPE html>
   <div class="modal-box">
     <h4 id="confirm-modal-title"></h4>
     <p id="confirm-modal-message"></p>
+    <input type="text" id="confirm-modal-input" style="display:none; width:100%; margin-bottom:16px;">
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="_confirmModalAnswer(false)">Bekor qilish</button>
       <button class="btn" id="confirm-modal-ok" onclick="_confirmModalAnswer(true)"></button>
@@ -351,14 +362,17 @@ STUDIO_HTML = """<!DOCTYPE html>
     setTimeout(() => t.classList.remove('show'), 1800);
   }
 
-  // ── Tasdiqlash modali (brauzer confirm()'i o'rniga) ──────
+  // ── Tasdiqlash / kiritish modali (brauzer confirm()/prompt()'i o'rniga) ──
   let _confirmResolve = null;
+  let _confirmModalMode = 'confirm';
 
   function showConfirmModal({ title, message, okLabel, okClass = 'btn-gold' }) {
     return new Promise(resolve => {
       _confirmResolve = resolve;
+      _confirmModalMode = 'confirm';
       document.getElementById('confirm-modal-title').textContent = title;
       document.getElementById('confirm-modal-message').textContent = message;
+      document.getElementById('confirm-modal-input').style.display = 'none';
       const okBtn = document.getElementById('confirm-modal-ok');
       okBtn.textContent = okLabel;
       okBtn.className = 'btn ' + okClass;
@@ -366,9 +380,56 @@ STUDIO_HTML = """<!DOCTYPE html>
     });
   }
 
+  // Loyiha nomi kabi qisqa matn kiritish uchun (brauzer prompt()'i o'rniga,
+  // dashboard uslubiga mos modal bilan). Bekor qilinsa null qaytaradi.
+  function showInputModal({ title, message = '', placeholder = '', okLabel = 'Yaratish', okClass = 'btn-gold' }) {
+    return new Promise(resolve => {
+      _confirmResolve = resolve;
+      _confirmModalMode = 'input';
+      document.getElementById('confirm-modal-title').textContent = title;
+      document.getElementById('confirm-modal-message').textContent = message;
+      const inputEl = document.getElementById('confirm-modal-input');
+      inputEl.style.display = 'block';
+      inputEl.value = '';
+      inputEl.placeholder = placeholder;
+      const okBtn = document.getElementById('confirm-modal-ok');
+      okBtn.textContent = okLabel;
+      okBtn.className = 'btn ' + okClass;
+      document.getElementById('confirm-modal').classList.add('show');
+      setTimeout(() => inputEl.focus(), 50);
+    });
+  }
+
   function _confirmModalAnswer(result) {
     document.getElementById('confirm-modal').classList.remove('show');
-    if (_confirmResolve) { _confirmResolve(result); _confirmResolve = null; }
+    const inputEl = document.getElementById('confirm-modal-input');
+    const wasInput = _confirmModalMode === 'input';
+    inputEl.style.display = 'none';
+    if (_confirmResolve) {
+      _confirmResolve(wasInput ? (result ? inputEl.value.trim() : null) : result);
+      _confirmResolve = null;
+    }
+  }
+
+  // ── Loyihalar (CaaS: bitta Dashboard — ko'p loyiha) ────────
+  // currentProjectId brauzer localStorage'da saqlanadi — sahifa qayta
+  // yuklanganda ham oxirgi tanlangan loyiha eslab qolinadi.
+  let currentProjectId = Number(localStorage.getItem('studiolab_project_id')) || null;
+  let projectsList = [];
+
+  // Har bir Dashboard API so'roviga avtomatik project_id qo'shadi —
+  // shunda alohida joyda unutib qo'yish xavfi yo'q.
+  function apiGet(path) {
+    const sep = path.includes('?') ? '&' : '?';
+    return fetch(`${path}${sep}project_id=${currentProjectId}`);
+  }
+
+  function apiPost(path, body) {
+    return fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: currentProjectId, ...(body || {}) }),
+    });
   }
 
   function escapeHtml(str) {
@@ -424,7 +485,7 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   async function loadStats() {
     try {
-      const res = await fetch('/api/studio/stats');
+      const res = await apiGet('/api/studio/stats');
       const s = await res.json();
       document.getElementById('kpi-today').textContent = s.posts_today ?? '—';
       document.getElementById('kpi-pending').textContent = s.pending_review ?? '—';
@@ -453,9 +514,9 @@ STUDIO_HTML = """<!DOCTYPE html>
     const el = document.getElementById('activity-feed');
     try {
       const [draftRes, pubRes, rejRes] = await Promise.all([
-        fetch('/api/studio/assets?status=draft'),
-        fetch('/api/studio/assets?status=published'),
-        fetch('/api/studio/assets?status=rejected'),
+        apiGet('/api/studio/assets?status=draft'),
+        apiGet('/api/studio/assets?status=published'),
+        apiGet('/api/studio/assets?status=rejected'),
       ]);
       const [drafts, pub, rej] = await Promise.all([draftRes.json(), pubRes.json(), rejRes.json()]);
       const items = [
@@ -483,7 +544,7 @@ STUDIO_HTML = """<!DOCTYPE html>
   async function loadAssets(status, containerId) {
     const el = document.getElementById(containerId);
     try {
-      const res = await fetch('/api/studio/assets?status=' + status);
+      const res = await apiGet('/api/studio/assets?status=' + status);
       const items = await res.json();
       items.forEach(a => assetCache[a.id] = a);
       if (!items.length) {
@@ -546,10 +607,7 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   async function saveAsset(id) {
     try {
-      const res = await fetch('/api/studio/assets/update', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ id, content: document.getElementById('rp-content').value })
-      });
+      const res = await apiPost('/api/studio/assets/update', { id, content: document.getElementById('rp-content').value });
       const data = await res.json();
       if (!res.ok) { toast('Saqlashda xato: ' + (data.error || res.status)); return false; }
       toast('Saqlandi');
@@ -572,10 +630,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     try {
       const saved = await saveAsset(id);
       if (!saved) return;
-      const res = await fetch('/api/studio/assets/approve', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ id })
-      });
+      const res = await apiPost('/api/studio/assets/approve', { id });
       const data = await res.json();
       if (!res.ok) {
         console.error('[approveAsset] server error', res.status, data);
@@ -600,10 +655,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     });
     if (!ok) return;
     try {
-      const res = await fetch('/api/studio/assets/reject', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ id })
-      });
+      const res = await apiPost('/api/studio/assets/reject', { id });
       const data = await res.json();
       if (!res.ok) {
         console.error('[rejectAsset] server error', res.status, data);
@@ -627,10 +679,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     btn.disabled = true;
     btn.textContent = 'Ishlanmoqda...';
     try {
-      const res = await fetch('/api/studio/assets/submit', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ text })
-      });
+      const res = await apiPost('/api/studio/assets/submit', { text });
       const data = await res.json();
       if (!res.ok) { toast(data.error || 'Xatolik'); return; }
       textEl.value = '';
@@ -650,7 +699,7 @@ STUDIO_HTML = """<!DOCTYPE html>
   async function loadSources() {
     const el = document.getElementById('sources-list');
     try {
-      const res = await fetch('/api/studio/sources');
+      const res = await apiGet('/api/studio/sources');
       const rows = await res.json();
       if (!rows.length) { el.innerHTML = '<div class="empty">Hozircha manba yo\\'q.</div>'; return; }
       el.innerHTML = rows.map(r => `
@@ -669,10 +718,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     const input = document.getElementById('new-source-url');
     const url = input.value.trim();
     if (!url) return;
-    const res = await fetch('/api/studio/sources', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ url })
-    });
+    const res = await apiPost('/api/studio/sources', { url });
     const data = await res.json();
     if (!res.ok) { toast(data.error || 'Xatolik'); return; }
     input.value = '';
@@ -682,10 +728,7 @@ STUDIO_HTML = """<!DOCTYPE html>
   }
 
   async function toggleSource(id, active) {
-    await fetch('/api/studio/sources/toggle', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ id, active })
-    });
+    await apiPost('/api/studio/sources/toggle', { id, active });
     loadSources();
     loadStats();
   }
@@ -698,10 +741,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       okClass: 'btn-danger',
     });
     if (!ok) return;
-    await fetch('/api/studio/sources/delete', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ id })
-    });
+    await apiPost('/api/studio/sources/delete', { id });
     loadSources();
     loadStats();
   }
@@ -784,10 +824,7 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   async function saveTerminology() {
     const terminology = collectRows('term-rows');
-    const res = await fetch('/api/studio/config', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ terminology })
-    });
+    const res = await apiPost('/api/studio/config', { terminology });
     const data = await res.json();
     if (!res.ok) { toast(data.error || 'Xatolik'); return; }
     toast('Saqlandi');
@@ -796,10 +833,7 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   async function saveNicknames() {
     const nicknames = collectRows('nick-rows');
-    const res = await fetch('/api/studio/config', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ nicknames })
-    });
+    const res = await apiPost('/api/studio/config', { nicknames });
     const data = await res.json();
     if (!res.ok) { toast(data.error || 'Xatolik'); return; }
     toast('Saqlandi');
@@ -808,10 +842,7 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   async function saveJargon() {
     const jargon = collectRows('jargon-rows');
-    const res = await fetch('/api/studio/config', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ jargon })
-    });
+    const res = await apiPost('/api/studio/config', { jargon });
     const data = await res.json();
     if (!res.ok) { toast(data.error || 'Xatolik'); return; }
     toast('Saqlandi');
@@ -820,10 +851,7 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   async function saveEmojiLegend() {
     const emoji_legend = collectRows('emoji-rows');
-    const res = await fetch('/api/studio/config', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ emoji_legend })
-    });
+    const res = await apiPost('/api/studio/config', { emoji_legend });
     const data = await res.json();
     if (!res.ok) { toast(data.error || 'Xatolik'); return; }
     toast('Saqlandi');
@@ -832,10 +860,7 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   async function saveContentTypes() {
     const content_types = collectListRows('ctypes-rows');
-    const res = await fetch('/api/studio/config', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ content_types })
-    });
+    const res = await apiPost('/api/studio/config', { content_types });
     const data = await res.json();
     if (!res.ok) { toast(data.error || 'Xatolik'); return; }
     toast('Saqlandi');
@@ -845,11 +870,9 @@ STUDIO_HTML = """<!DOCTYPE html>
   async function saveChannelSettings() {
     const domain_description = document.getElementById('domain-description').value.trim();
     const channel_tag = document.getElementById('channel-tag').value.trim();
+    const telegram_channel_id = document.getElementById('telegram-channel-id').value.trim();
     const tone = document.getElementById('tone-field').value.trim();
-    const res = await fetch('/api/studio/config', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ domain_description, channel_tag, tone })
-    });
+    const res = await apiPost('/api/studio/config', { domain_description, channel_tag, telegram_channel_id, tone });
     const data = await res.json();
     if (!res.ok) { toast(data.error || 'Xatolik'); return; }
     toast('Saqlandi');
@@ -857,7 +880,7 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   async function loadConfig() {
     try {
-      const res = await fetch('/api/studio/config');
+      const res = await apiGet('/api/studio/config');
       const cfg = await res.json();
       renderRows('term-rows', cfg.terminology);
       renderRows('nick-rows', cfg.nicknames);
@@ -866,6 +889,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       renderListRows('ctypes-rows', cfg.content_types);
       document.getElementById('domain-description').value = cfg.domain_description || '';
       document.getElementById('channel-tag').value = cfg.channel_tag || '';
+      document.getElementById('telegram-channel-id').value = cfg.telegram_channel_id || '';
       document.getElementById('tone-field').value = cfg.tone || '';
     } catch (e) {
       toast('Config yuklanmadi');
@@ -892,10 +916,89 @@ STUDIO_HTML = """<!DOCTYPE html>
     if (!document.hidden) refreshCurrentLists();
   });
 
+  // ── Loyihalar: yuklash, almashtirish, yangi yaratish ──────
+  async function initProjects() {
+    try {
+      const res = await fetch('/api/studio/projects');
+      projectsList = await res.json();
+      if (!projectsList.length) {
+        document.getElementById('sidebar-foot-text').textContent = 'Loyiha topilmadi';
+        return;
+      }
+      // Saqlangan tanlov haqiqiy ro'yxatda bormi tekshiramiz; bo'lmasa
+      // (masalan boshqa brauzerdan birinchi marta kirilganda), birinchi
+      // loyihaga tushamiz.
+      if (!currentProjectId || !projectsList.some(p => p.id === currentProjectId)) {
+        currentProjectId = projectsList[0].id;
+        localStorage.setItem('studiolab_project_id', String(currentProjectId));
+      }
+      renderProjectSelect();
+      updateSidebarFoot();
+    } catch (e) {
+      document.getElementById('sidebar-foot-text').textContent = 'Loyihalar yuklanmadi';
+    }
+  }
+
+  function renderProjectSelect() {
+    const sel = document.getElementById('project-select');
+    sel.innerHTML = projectsList.map(p =>
+      `<option value="${p.id}" ${p.id === currentProjectId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`
+    ).join('');
+  }
+
+  function updateSidebarFoot() {
+    const p = projectsList.find(p => p.id === currentProjectId);
+    document.getElementById('sidebar-foot-text').textContent = p ? `${p.name} loyihasi` : '';
+  }
+
+  function switchProject(idStr) {
+    currentProjectId = Number(idStr);
+    localStorage.setItem('studiolab_project_id', String(currentProjectId));
+    updateSidebarFoot();
+    // Eski loyihaning keshlangan holatini tozalab, hozirgi ko'rinishni
+    // qayta yuklaymiz — aks holda boshqa loyihaning postlari bir lahza
+    // ko'rinib turishi mumkin.
+    assetCache = {};
+    lastPendingCount = null;
+    document.getElementById('rightpanel').innerHTML = '<div class="rp-empty"><div>Postni tanlang — tafsilotlar shu yerda ko\\'rinadi</div></div>';
+    Object.keys(viewLoaded).forEach(k => { viewLoaded[k] = false; });
+    loadStats();
+    loadActivityFeed();
+    const activeView = document.querySelector('.nav-item.active');
+    if (activeView) switchView(activeView.dataset.view);
+  }
+
+  async function createNewProject() {
+    const name = await showInputModal({
+      title: 'Yangi loyiha',
+      message: "Loyiha nomini kiriting (masalan: \\"Toy Company UZ\\"):",
+      placeholder: 'Loyiha nomi',
+      okLabel: 'Yaratish',
+    });
+    if (!name) return;
+    try {
+      const res = await fetch('/api/studio/projects', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast(data.error || 'Xatolik'); return; }
+      projectsList.push(data);
+      switchProject(String(data.id));
+      renderProjectSelect();
+      toast(`Loyiha yaratildi: ${data.name}`);
+    } catch (e) {
+      toast('Loyiha yaratishda xatolik');
+    }
+  }
+
   // ── Boot ───────────────────────────────────────────────
-  loadStats();
-  loadActivityFeed();
-  startPolling();
+  (async () => {
+    await initProjects();
+    loadStats();
+    loadActivityFeed();
+    startPolling();
+  })();
 </script>
 </body>
 </html>
