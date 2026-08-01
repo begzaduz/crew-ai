@@ -6,6 +6,7 @@ juftligini qaytaradi — HTTP transport qatlamidan mustaqil, shuning uchun
 kelajakda boshqa transport (masalan haqiqiy web-framework)ga o'tish oson.
 """
 import logging
+import re
 
 import database
 import telegram_utils
@@ -83,6 +84,7 @@ def get_config(project_id: int) -> tuple[int, object]:
 _ALLOWED_CONFIG_KEYS = {
     'terminology', 'nicknames', 'channel_tag', 'tone',
     'domain_description', 'content_types', 'jargon', 'emoji_legend',
+    'telegram_channel_id',
 }
 
 
@@ -102,6 +104,8 @@ def update_config(project_id: int, data: dict) -> tuple[int, object]:
         return 400, {'error': "content_types massiv (list) bo'lishi kerak"}
     if 'domain_description' in patch and not isinstance(patch['domain_description'], str):
         return 400, {'error': "domain_description matn bo'lishi kerak"}
+    if 'telegram_channel_id' in patch and not isinstance(patch['telegram_channel_id'], str):
+        return 400, {'error': "telegram_channel_id matn bo'lishi kerak (masalan @KanalNomi)"}
     try:
         cfg = database.update_workflow_config(project_id, patch)
         log.info(f'[StudioAPI] Config yangilandi (project={project_id}): {list(patch.keys())}')
@@ -190,7 +194,17 @@ def approve_asset(data: dict) -> tuple[int, object]:
     if asset.get('status') == 'published':
         return 400, {'error': 'bu post allaqachon yuborilgan'}
 
-    result = telegram_utils.tg_channel(asset['content'], image_url=asset.get('image_url'))
+    # MUHIM: postni QAYSI loyiha yaratgan bo'lsa, aynan O'SHA loyihaning
+    # Telegram kanaliga yuboriladi — so'rov qaysi loyihadan kelganidan
+    # qat'i nazar. Bu bitta bot bir nechta kanalga xizmat qilishi uchun
+    # to'g'ri manzilni kafolatlaydi (bir loyiha posti boshqa loyiha
+    # kanaliga tasodifan chiqib qolmasligi uchun).
+    owner_config = database.get_workflow_config(asset['project_id'])
+    target_channel = owner_config.get('telegram_channel_id') or None
+
+    result = telegram_utils.tg_channel(
+        asset['content'], image_url=asset.get('image_url'), chat_id=target_channel,
+    )
     if not result.get('ok'):
         log.error(f'[StudioAPI] approve_asset: TG xato: {result.get("description")}')
         return 502, {'error': f"Telegram xato: {result.get('description')}"}
@@ -262,9 +276,37 @@ def submit_manual_content(project_id: int, data: dict) -> tuple[int, object]:
         return 500, {'error': str(e)}
 
 
+# ── Loyihalar (CaaS: bitta Dashboard — ko'p loyiha) ────────────────
+def list_projects(_project_id, _query) -> tuple[int, object]:
+    try:
+        return 200, database.list_projects()
+    except Exception as e:
+        log.error(f'[StudioAPI] list_projects: {e}')
+        return 500, {'error': str(e)}
+
+
+def create_project(_project_id, data: dict) -> tuple[int, object]:
+    name = (data.get('name') or '').strip()
+    if not name:
+        return 400, {'error': 'name kerak'}
+    slug = (data.get('slug') or '').strip()
+    if not slug:
+        slug = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
+    if not slug:
+        return 400, {'error': "slug yaratib bo'lmadi — name'da lotin harflari/raqam bo'lishi kerak"}
+    try:
+        project = database.get_or_create_project(slug, name)
+        log.info(f"[StudioAPI] Yangi loyiha yaratildi: {slug} ({name}, id={project['id']})")
+        return 200, project
+    except Exception as e:
+        log.error(f'[StudioAPI] create_project: {e}')
+        return 500, {'error': str(e)}
+
+
 # ── Route jadvallari — main.py shu yerdan dispatch qiladi ──────────
 # GET: (project_id, query_dict) -> (status, payload)
 GET_ROUTES = {
+    '/api/studio/projects': list_projects,
     '/api/studio/sources': lambda project_id, _q: list_sources(project_id),
     '/api/studio/config':  lambda project_id, _q: get_config(project_id),
     '/api/studio/assets':  lambda project_id, q: list_assets(project_id, q),
@@ -273,6 +315,7 @@ GET_ROUTES = {
 
 # POST: (project_id, body_dict) -> (status, payload)
 POST_ROUTES = {
+    '/api/studio/projects':         create_project,
     '/api/studio/sources':          lambda project_id, body: add_source(project_id, body),
     '/api/studio/sources/toggle':   lambda project_id, body: toggle_source(body),
     '/api/studio/sources/delete':   lambda project_id, body: delete_source(body),

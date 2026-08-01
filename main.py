@@ -111,6 +111,21 @@ def _check_dashboard_auth(headers) -> bool:
     return hmac.compare_digest(user, DASHBOARD_USER) and hmac.compare_digest(pwd, DASHBOARD_PASSWORD)
 
 
+def _resolve_project_id(source: dict) -> int:
+    """So'rovdan (query yoki JSON body) 'project_id'ni oladi — Dashboard'da
+    loyiha almashtirilganda shu orqali qaysi loyiha bilan ishlash
+    aniqlanadi. Berilmagan/noto'g'ri bo'lsa, bootstrap qilingan asosiy
+    loyihaga (Ingliz Futboli) qaytadi — eski so'rovlar bilan orqaga
+    moslik uchun."""
+    raw = source.get('project_id')
+    if raw:
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            pass
+    return PROJECT_ID
+
+
 # ── Admin tekshiruvi ──────────────────────────────────────
 def is_admin(chat_id: int) -> bool:
     if not ADMIN_IDS:
@@ -349,7 +364,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
             except Exception:
                 data = {}
             try:
-                status, payload = studio_api.POST_ROUTES[path](PROJECT_ID, data)
+                status, payload = studio_api.POST_ROUTES[path](_resolve_project_id(data), data)
             except Exception as e:
                 log.error(f'[StudioAPI] {path}: {e}')
                 status, payload = 500, {'error': str(e)}
@@ -388,7 +403,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
             qs = parse_qs(parsed.query)
             query = {k: v[0] for k, v in qs.items()}
             try:
-                status, payload = studio_api.GET_ROUTES[path](PROJECT_ID, query)
+                status, payload = studio_api.GET_ROUTES[path](_resolve_project_id(query), query)
             except Exception as e:
                 log.error(f'[StudioAPI] {path}: {e}')
                 status, payload = 500, {'error': str(e)}

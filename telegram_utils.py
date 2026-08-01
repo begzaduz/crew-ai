@@ -90,20 +90,26 @@ def _clean_post(post: str) -> str:
     return '\n'.join(cleaned)
 
 
-def tg_channel(text: str, image_url: str | None = None) -> dict:
+def tg_channel(text: str, image_url: str | None = None, chat_id: str | int | None = None) -> dict:
     """
     Kanalga yuborish (FAQAT Dashboard'da 'Tasdiqlash' bosilganda chaqiriladi):
     - image_url bo'lsa: sendPhoto (rasm + caption HTML)
     - bo'lmasa: sendMessage (faqat matn HTML)
+
+    chat_id — loyihaning o'z Telegram kanali (workflows.config'dagi
+    'telegram_channel_id'). Berilmasa (masalan hali sozlanmagan eski
+    loyiha bo'lsa), global CHANNEL (.env) ishlatiladi — bitta bot bir
+    nechta kanalga xizmat qila oladi, har bir loyiha o'z manziliga.
     """
     text = _clean_post(text)
+    target = chat_id or CHANNEL
 
     if image_url:
         caption = text[:1024]
         res = requests.post(
             f'https://api.telegram.org/bot{TOKEN}/sendPhoto',
             json={
-                'chat_id': CHANNEL,
+                'chat_id': target,
                 'photo': image_url,
                 'caption': caption,
                 'parse_mode': 'HTML',
@@ -113,13 +119,13 @@ def tg_channel(text: str, image_url: str | None = None) -> dict:
         result = res.json()
         if not result.get('ok'):
             log.warning(f'[TG] sendPhoto xato: {result.get("description")} — matn sifatida yuborilmoqda')
-            return tg_channel(text, image_url=None)
+            return tg_channel(text, image_url=None, chat_id=chat_id)
         return result
     else:
         res = requests.post(
             f'https://api.telegram.org/bot{TOKEN}/sendMessage',
             json={
-                'chat_id': CHANNEL,
+                'chat_id': target,
                 'text': text,
                 'parse_mode': 'HTML',
             },
