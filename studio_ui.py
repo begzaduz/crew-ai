@@ -142,6 +142,7 @@ STUDIO_HTML = """<!DOCTYPE html>
   .btn-gold{ background:var(--gold); color:var(--navy-deep); }
   .btn-ghost{ background:var(--surface-2); color:var(--text-dim); border:1px solid var(--border); }
   .btn-danger{ background:rgba(226,81,90,.12); color:var(--red); border:1px solid rgba(226,81,90,.3); }
+  .btn-green{ background:var(--green); color:var(--navy-deep); }
 
   .studio-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px 22px; max-width:640px; }
   .studio-card .subtitle{ color:var(--text-faint); font-size:12.5px; margin-bottom:16px; }
@@ -482,6 +483,13 @@ STUDIO_HTML = """<!DOCTYPE html>
     });
   }
 
+  // Ichki (dasturiy) tur kodlari ('rss_news', 'manual') foydalanuvchiga
+  // xom holda ko'rinmasligi uchun — o'qiladigan yorliqqa aylantiradi.
+  const ASSET_TYPE_LABELS = { rss_news: 'RSS', manual: "Qo'lda kiritilgan" };
+  function assetTypeLabel(type) {
+    return ASSET_TYPE_LABELS[type] || type || '';
+  }
+
   function escapeHtml(str) {
     const div = document.createElement('div');
     div.innerText = str || '';
@@ -626,7 +634,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         <div class="q-card" data-id="${a.id}" onclick="openAsset(${a.id})">
           <div class="q-title">${escapeHtml((a.title || '').slice(0, 90))}</div>
           <div class="q-meta">
-            ${host ? '<span>🌐 ' + escapeHtml(host) + '</span>' : `<span>${escapeHtml(a.type || '')}</span>`}
+            ${host ? '<span>🌐 ' + escapeHtml(host) + '</span>' : `<span>${escapeHtml(assetTypeLabel(a.type))}</span>`}
             <span>${fmtTime(a.created_at)}</span>
             ${a.score ? '<span>ball: ' + a.score + '</span>' : ''}
           </div>
@@ -656,7 +664,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     rp.innerHTML = `
       <button class="rp-close-mobile" onclick="closeRightPanel()">← Orqaga</button>
       <div class="rp-title">${escapeHtml((a.title || '').slice(0, 60))}</div>
-      <div class="rp-sub">${escapeHtml(a.type || '')} · ${fmtTime(a.created_at)}${a.source_url ? ' · <a class="rp-link" href="' + escapeHtml(a.source_url) + '" target="_blank">manba</a>' : ''}</div>
+      <div class="rp-sub">${escapeHtml(assetTypeLabel(a.type))} · ${fmtTime(a.created_at)}${a.source_url ? ' · <a class="rp-link" href="' + escapeHtml(a.source_url) + '" target="_blank">manba</a>' : ''}</div>
 
       ${a.image_url ? `<div class="rp-section"><div class="rp-label">Rasm</div><div class="rp-img" style="background-image:url('${escapeHtml(a.image_url)}')"></div></div>` : ''}
 
@@ -668,7 +676,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       ${isDraft ? `
         <div class="rp-actions">
           <button class="btn btn-ghost" onclick="saveAsset(${a.id})">Saqlash</button>
-          <button class="btn btn-gold" onclick="approveAsset(${a.id})">Tasdiqlash va yuborish</button>
+          <button class="btn btn-green" onclick="approveAsset(${a.id})">Tasdiqlash va yuborish</button>
           <button class="btn btn-danger" onclick="rejectAsset(${a.id})">Rad etish</button>
         </div>
       ` : ''}
@@ -701,7 +709,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       title: 'Kanalga yuborish',
       message: 'Bu post kanalga yuboriladi. Tasdiqlaysizmi?',
       okLabel: 'Tasdiqlash va yuborish',
-      okClass: 'btn-gold',
+      okClass: 'btn-green',
     });
     if (!ok) return;
     try {
