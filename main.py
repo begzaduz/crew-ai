@@ -341,6 +341,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate')
         self.end_headers()
         self.wfile.write(body)
 
@@ -420,6 +421,11 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 return
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
+            # Dashboard tez-tez o'zgaradi (har deploy'da) — brauzer yoki
+            # mobil operator proksisi eskirgan nusxani ko'rsatib qolishi
+            # mumkin edi. Bu buni butunlay taqiqlaydi.
+            self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate')
+            self.send_header('Pragma', 'no-cache')
             self.end_headers()
             self.wfile.write(STUDIO_HTML.encode('utf-8'))
             return
