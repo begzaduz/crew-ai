@@ -21,7 +21,52 @@ STUDIO_HTML = """<!DOCTYPE html>
   ::-webkit-scrollbar-thumb{ background:var(--border); border-radius:8px; }
 
   .shell{ display:grid; grid-template-columns: 220px 1fr 320px; height:100vh; }
-  @media (max-width: 900px){ .shell{ grid-template-columns: 1fr; } .sidebar, .rightpanel{ display:none; } }
+
+  .mobile-topbar{ display:none; }
+  .mobile-backdrop{ display:none; }
+  .rp-close-mobile{ display:none; }
+
+  @media (max-width: 900px){
+    body{ overflow:auto; }
+    .shell{ display:block; height:auto; min-height:100vh; }
+
+    .mobile-topbar{
+      display:flex; align-items:center; gap:12px; padding:12px 16px;
+      background:var(--navy-deep); border-bottom:1px solid var(--border);
+      position:sticky; top:0; z-index:60;
+    }
+    .mobile-menu-btn{
+      background:var(--surface); border:1px solid var(--border); color:var(--text);
+      width:36px; height:36px; border-radius:8px; font-size:17px; cursor:pointer; flex-shrink:0;
+    }
+    .mobile-topbar-title{ font-size:15px; font-weight:700; }
+
+    .mobile-backdrop.show{
+      display:block; position:fixed; inset:0; background:rgba(10,18,36,.6); z-index:90;
+    }
+
+    .sidebar{
+      position:fixed; top:0; left:0; bottom:0; width:260px; max-width:82vw;
+      z-index:100; transform:translateX(-100%); transition:transform .2s ease;
+      box-shadow:4px 0 24px rgba(0,0,0,.4);
+    }
+    .sidebar.open{ transform:translateX(0); }
+
+    main{ padding:16px 14px 60px; }
+    .kpi-row{ grid-template-columns: repeat(2,1fr); }
+
+    .rightpanel{
+      position:fixed; inset:0; z-index:110; width:auto; height:100vh;
+      transform:translateX(100%); transition:transform .2s ease;
+      padding:16px 16px 24px;
+    }
+    .rightpanel.open{ transform:translateX(0); }
+    .rp-close-mobile{
+      display:flex; align-items:center; gap:6px; background:var(--surface);
+      border:1px solid var(--border); color:var(--text); border-radius:8px;
+      padding:8px 14px; font-size:13px; margin-bottom:16px; cursor:pointer;
+    }
+  }
 
   /* Sidebar */
   .sidebar{ background:var(--navy-deep); border-right:1px solid var(--border); overflow-y:auto; display:flex; flex-direction:column; }
@@ -152,6 +197,11 @@ STUDIO_HTML = """<!DOCTYPE html>
 </style>
 </head>
 <body>
+<div class="mobile-topbar">
+  <button class="mobile-menu-btn" onclick="toggleMobileSidebar()" aria-label="Menyu">☰</button>
+  <div class="mobile-topbar-title" id="mobile-topbar-title">Dashboard</div>
+</div>
+<div class="mobile-backdrop" id="mobile-backdrop" onclick="closeMobileSidebar()"></div>
 <div class="shell">
 
   <aside class="sidebar">
@@ -465,10 +515,19 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   // ── View switching ─────────────────────────────────────
   const viewLoaded = {};
+  const VIEW_TITLES = {
+    dashboard: 'Dashboard', queue: 'Review Queue', published: 'Published',
+    rejected: 'Rejected', sources: 'RSS Sources', kb: 'Knowledge Base',
+    studio: 'AI Content Studio',
+  };
+
   function switchView(name) {
     document.querySelectorAll('.nav-item[data-view]').forEach(n => n.classList.toggle('active', n.dataset.view === name));
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.getElementById('view-' + name).classList.add('active');
+    const titleEl = document.getElementById('mobile-topbar-title');
+    if (titleEl) titleEl.textContent = VIEW_TITLES[name] || 'Studio Lab';
+    closeMobileSidebar();
     if (!viewLoaded[name]) {
       viewLoaded[name] = true;
       if (name === 'queue') loadAssets('draft', 'queue-draft');
@@ -477,6 +536,16 @@ STUDIO_HTML = """<!DOCTYPE html>
       if (name === 'sources') loadSources();
       if (name === 'kb') loadConfig();
     }
+  }
+
+  function toggleMobileSidebar() {
+    document.querySelector('.sidebar').classList.toggle('open');
+    document.getElementById('mobile-backdrop').classList.toggle('show');
+  }
+
+  function closeMobileSidebar() {
+    document.querySelector('.sidebar').classList.remove('open');
+    document.getElementById('mobile-backdrop').classList.remove('show');
   }
 
   // ── Dashboard ────────────────────────────────────────────
@@ -585,6 +654,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     const rp = document.getElementById('rightpanel');
     const isDraft = a.status === 'draft';
     rp.innerHTML = `
+      <button class="rp-close-mobile" onclick="closeRightPanel()">← Orqaga</button>
       <div class="rp-title">${escapeHtml((a.title || '').slice(0, 60))}</div>
       <div class="rp-sub">${escapeHtml(a.type || '')} · ${fmtTime(a.created_at)}${a.source_url ? ' · <a class="rp-link" href="' + escapeHtml(a.source_url) + '" target="_blank">manba</a>' : ''}</div>
 
@@ -603,6 +673,13 @@ STUDIO_HTML = """<!DOCTYPE html>
         </div>
       ` : ''}
     `;
+    rp.classList.add('open');
+  }
+
+  function closeRightPanel() {
+    document.getElementById('rightpanel').innerHTML = '<div class="rp-empty"><div>Postni tanlang — tafsilotlar shu yerda ko\\'rinadi</div></div>';
+    document.getElementById('rightpanel').classList.remove('open');
+    document.querySelectorAll('.q-card').forEach(c => c.classList.remove('selected'));
   }
 
   async function saveAsset(id) {
@@ -638,7 +715,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         return;
       }
       toast('Kanalga yuborildi ✅');
-      document.getElementById('rightpanel').innerHTML = '<div class="rp-empty"><div>Postni tanlang — tafsilotlar shu yerda ko\\'rinadi</div></div>';
+      closeRightPanel();
       refreshCurrentLists();
     } catch (e) {
       console.error('[approveAsset] exception', e);
@@ -663,7 +740,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         return;
       }
       toast('Rad etildi');
-      document.getElementById('rightpanel').innerHTML = '<div class="rp-empty"><div>Postni tanlang — tafsilotlar shu yerda ko\\'rinadi</div></div>';
+      closeRightPanel();
       refreshCurrentLists();
     } catch (e) {
       console.error('[rejectAsset] exception', e);
@@ -960,7 +1037,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     // ko'rinib turishi mumkin.
     assetCache = {};
     lastPendingCount = null;
-    document.getElementById('rightpanel').innerHTML = '<div class="rp-empty"><div>Postni tanlang — tafsilotlar shu yerda ko\\'rinadi</div></div>';
+    closeRightPanel();
     Object.keys(viewLoaded).forEach(k => { viewLoaded[k] = false; });
     loadStats();
     loadActivityFeed();
