@@ -16,6 +16,15 @@ konteyneri orqali, lokal ishlab chiqishda esa DATABASE_URL env
 o'zgaruvchisini qo'lda export qilib beriladi.
 """
 import os
+import sys
+
+# Repo ildizini sys.path'ga qo'shamiz — bu conftest.py'ning joylashgan
+# joyidan mustaqil hisoblanadi (tests/'ning bir daraja tepasi). MUHIM:
+# buni ATAYLAB shu yerda, aniq yo'l bilan qilamiz, chunki pytest'ning
+# "bare" chaqiruvi ('pytest tests/') va 'python -m pytest' chaqiruvi
+# sys.path'ni har xil sozlaydi — birinchisida repo ildizi (database.py,
+# main.py va h.k. joylashgan joy) import qilinmay qoladi.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 os.environ.setdefault('TOKEN', 'test-token')
 os.environ.setdefault('GEMINI_KEY', 'test-gemini-key')
