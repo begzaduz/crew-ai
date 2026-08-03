@@ -568,6 +568,24 @@ def get_asset(asset_id: int) -> dict | None:
         _put_conn(conn)
 
 
+def get_last_asset_created_at(project_id: int):
+    """Loyihaning eng so'nggi asset (draft/published/rejected — barcha
+    status) yaratilgan vaqtini qaytaradi. Dashboard'dagi 'Active/Error'
+    status badge shu asosda hisoblanadi — pipeline oxirgi marta qachon
+    kontent yaratganini bildiradi. Hech qanday asset bo'lmasa None."""
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                'SELECT MAX(created_at) FROM assets WHERE project_id=%s',
+                (project_id,),
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
+    finally:
+        _put_conn(conn)
+
+
 def update_asset_content(asset_id: int, content: str, title: str | None = None) -> None:
     """Dashboard'dagi 'Edit' — tasdiqlashdan oldin postni qo'lda tahrirlash."""
     conn = _get_conn()

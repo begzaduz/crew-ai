@@ -88,6 +88,8 @@ STUDIO_HTML = """<!DOCTYPE html>
   .nav-item.active .count{ color:var(--gold); }
   .sidebar-foot{ padding:12px 18px; border-top:1px solid var(--border); font-size:11px; color:var(--text-faint); display:flex; align-items:center; gap:8px; }
   .status-dot{ width:7px; height:7px; border-radius:50%; background:var(--green); flex-shrink:0; }
+  .status-dot.error{ background:var(--red); }
+  .status-dot.idle{ background:var(--text-faint); }
 
   /* Main */
   main{ overflow-y:auto; padding:24px 28px 60px; }
@@ -241,14 +243,19 @@ STUDIO_HTML = """<!DOCTYPE html>
         <div class="nav-item" data-view="prompts" onclick="switchView('prompts')">Prompts</div>
       </div>
     </nav>
-    <div class="sidebar-foot"><span class="status-dot"></span> <span id="sidebar-foot-text">Yuklanmoqda...</span></div>
+    <div class="sidebar-foot"><span class="status-dot" id="status-dot" title="Yuklanmoqda..."></span> <span id="sidebar-foot-text">Yuklanmoqda...</span></div>
   </aside>
 
   <main>
 
     <!-- DASHBOARD -->
     <div class="view active" id="view-dashboard">
-      <div class="page-head"><h1>Dashboard</h1><p>AI-Powered Creative Operations — Ingliz Futboli loyihasi</p></div>
+      <div class="page-head" style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
+        <div><h1>Dashboard</h1><p>AI-Powered Creative Operations — Ingliz Futboli loyihasi</p></div>
+        <div id="status-badge" style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-faint); white-space:nowrap; padding-top:2px;">
+          <span class="status-dot" id="status-dot-2"></span><span id="status-badge-text">—</span>
+        </div>
+      </div>
 
       <div class="kpi-row">
         <div class="kpi-card"><div class="label">Bugungi nashrlar</div><div class="value" id="kpi-today">—</div></div>
@@ -611,6 +618,18 @@ STUDIO_HTML = """<!DOCTYPE html>
       document.getElementById('nav-count-published').textContent = s.published_total ?? 0;
       document.getElementById('nav-count-rejected').textContent = s.rejected_total ?? 0;
       document.getElementById('nav-count-sources').textContent = s.total_sources ?? 0;
+
+      const dot = document.getElementById('status-dot');
+      const dot2 = document.getElementById('status-dot-2');
+      const badgeText = document.getElementById('status-badge-text');
+      if (s.project_status) {
+        const cls = 'status-dot' + (s.project_status !== 'active' ? ' ' + s.project_status : '');
+        const labels = { active: 'Faol', error: "Ishlamayapti", idle: "Hali ishlamagan" };
+        const titles = { active: 'Faol', error: "Ishlamayapti (oxirgi post: " + fmtTime(s.last_run_at) + ")", idle: 'Hali hech narsa yaratilmagan' };
+        if (dot) { dot.className = cls; dot.title = titles[s.project_status] || ''; }
+        if (dot2) { dot2.className = cls; dot2.title = titles[s.project_status] || ''; }
+        if (badgeText) badgeText.textContent = labels[s.project_status] || '';
+      }
 
       if (typeof s.pending_review === 'number') {
         if (lastPendingCount !== null && s.pending_review > lastPendingCount) {

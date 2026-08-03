@@ -10,7 +10,7 @@ import re
 
 import database
 import telegram_utils
-from config import DAILY_POST_BUDGET
+from config import DAILY_POST_BUDGET, INTERVAL
 from workflows.rss_news import (
     RESEARCHER_PROMPT_TEMPLATE, WRITER_PROMPT_TEMPLATE, EDITOR_PROMPT_TEMPLATE,
 )
@@ -140,6 +140,14 @@ def update_config(project_id: int, data: dict) -> tuple[int, object]:
 # ── Dashboard KPI ("posts today", pending, published, sources) ────
 # Yangi jadval yoki ustun qo'shilmadi — faqat mavjud get_assets()/
 # get_data_sources() natijalarini Dashboard uchun birlashtiradi.
+# Avtomatik yangilik sikli (main.py'dagi news_loop) har INTERVAL soniyada
+# ishga tushadi. Agar oxirgi asset shu oraliqning 2 barobaridan ko'proq
+# vaqt oldin yaratilgan bo'lsa (bitta o'tkazib yuborilgan tsikl uchun
+# joy qoldirib), loyiha holati "error" (yoki hali umuman ishlamagan
+# bo'lsa "idle") deb belgilanadi.
+_STATUS_STALE_THRESHOLD_SECONDS = INTERVAL * 2
+
+
 def get_dashboard_stats(project_id: int) -> tuple[int, object]:
     try:
         import datetime as _dt
@@ -161,6 +169,15 @@ def get_dashboard_stats(project_id: int) -> tuple[int, object]:
             except Exception:
                 continue
 
+        last_run_at = database.get_last_asset_created_at(project_id)
+        if last_run_at is None:
+            project_status = 'idle'
+        else:
+            now = _dt.datetime.now(_dt.timezone.utc)
+            last_dt = last_run_at if last_run_at.tzinfo else last_run_at.replace(tzinfo=_dt.timezone.utc)
+            age_seconds = (now - last_dt).total_seconds()
+            project_status = 'active' if age_seconds <= _STATUS_STALE_THRESHOLD_SECONDS else 'error'
+
         return 200, {
             'pending_review': len(drafts),
             'published_total': len(published),
@@ -168,6 +185,8 @@ def get_dashboard_stats(project_id: int) -> tuple[int, object]:
             'posts_today': posts_today,
             'active_sources': sum(1 for s in sources if s.get('active')),
             'total_sources': len(sources),
+            'project_status': project_status,
+            'last_run_at': last_run_at,
         }
     except Exception as e:
         log.error(f'[StudioAPI] get_dashboard_stats: {e}')
