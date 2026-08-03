@@ -680,7 +680,16 @@ STUDIO_HTML = """<!DOCTYPE html>
       const items = await res.json();
       items.forEach(a => assetCache[a.id] = a);
       if (!items.length) {
-        el.innerHTML = '<div class="empty">Hozircha bu bo\\'limda post yo\\'q.</div>';
+        if (status === 'draft') {
+          el.innerHTML = `
+            <div class="empty">
+              <div style="margin-bottom:10px">Hozircha Review Queue bo'sh.</div>
+              <button class="btn btn-gold" onclick="switchView('studio')">+ AI Content Studio'da post yaratish</button>
+            </div>
+          `;
+        } else {
+          el.innerHTML = '<div class="empty">Hozircha bu bo\\'limda post yo\\'q.</div>';
+        }
         return;
       }
       el.innerHTML = items.map(a => {
@@ -836,12 +845,25 @@ STUDIO_HTML = """<!DOCTYPE html>
   }
 
   // ── Sources ──────────────────────────────────────────────
+  function focusNewSourceInput() {
+    const input = document.getElementById('new-source-url');
+    if (input) { input.scrollIntoView({ behavior: 'smooth', block: 'center' }); input.focus(); }
+  }
+
   async function loadSources() {
     const el = document.getElementById('sources-list');
     try {
       const res = await apiGet('/api/studio/sources');
       const rows = await res.json();
-      if (!rows.length) { el.innerHTML = '<div class="empty">Hozircha manba yo\\'q.</div>'; return; }
+      if (!rows.length) {
+        el.innerHTML = `
+          <div class="empty">
+            <div style="margin-bottom:10px">Hozircha RSS manba yo'q — AI hech qayerdan yangilik ololmaydi.</div>
+            <button class="btn btn-gold" onclick="focusNewSourceInput()">+ Birinchi RSS manba qo'shish</button>
+          </div>
+        `;
+        return;
+      }
       el.innerHTML = rows.map(r => `
         <div class="source-row">
           <span class="s-url ${r.active ? '' : 'inactive'}">${escapeHtml(r.url)}</span>
