@@ -273,15 +273,24 @@ CONTEXT: [context or NONE, in Uzbek]
 BREAKING: [YES or NO]"""
 
 
-def researcher_agent(article: dict, domain_description: str, jargon: dict) -> str:
+def researcher_agent(article: dict, domain_description: str, jargon: dict,
+                      prompt_template: str | None = None) -> str:
     content = fetch_article_text(article['url']) or ''
     if len(content) < 100:
         content = f"{article['title']}\n{article['description']}"
 
-    prompt = RESEARCHER_PROMPT_TEMPLATE.format(
-        domain_description=domain_description,
-        jargon_rules_block=_jargon_block(jargon),
-    )
+    template = prompt_template or RESEARCHER_PROMPT_TEMPLATE
+    try:
+        prompt = template.format(
+            domain_description=domain_description,
+            jargon_rules_block=_jargon_block(jargon),
+        )
+    except (KeyError, IndexError) as e:
+        log.warning(f'[Researcher] Custom prompt formatlashda xato ({e}) — standart promptga qaytildi')
+        prompt = RESEARCHER_PROMPT_TEMPLATE.format(
+            domain_description=domain_description,
+            jargon_rules_block=_jargon_block(jargon),
+        )
     result = groq_call(
         prompt,
         f"Analyze this {domain_description} news:\n\nHEADLINE: {article['title']}\nCONTENT: {content[:2200]}",
@@ -383,8 +392,9 @@ Hech qanday markdown ishlatma."""
 
 def writer_agent(article: dict, facts: str, nicknames: dict, channel_tag: str, tone: str,
                   domain_description: str, content_types: list, emoji_legend: dict,
-                  jargon: dict) -> str:
-    prompt = WRITER_PROMPT_TEMPLATE.format(
+                  jargon: dict, prompt_template: str | None = None) -> str:
+    template = prompt_template or WRITER_PROMPT_TEMPLATE
+    fmt_kwargs = dict(
         channel_tag=channel_tag,
         tone=tone,
         domain_description=domain_description,
@@ -393,6 +403,11 @@ def writer_agent(article: dict, facts: str, nicknames: dict, channel_tag: str, t
         emoji_block=_emoji_block(emoji_legend),
         jargon_block=_jargon_block(jargon, empty_text="(maxsus atamalar berilmagan)"),
     )
+    try:
+        prompt = template.format(**fmt_kwargs)
+    except (KeyError, IndexError) as e:
+        log.warning(f'[Writer] Custom prompt formatlashda xato ({e}) — standart promptga qaytildi')
+        prompt = WRITER_PROMPT_TEMPLATE.format(**fmt_kwargs)
     result = groq_call(
         prompt,
         f"Yangilik yoz:\n\nSARLAVHA: {article['title']}\nFAKTLAR:\n{facts}\n\nFaqat postni yoz:",
@@ -419,8 +434,14 @@ Agar HAMMA tekshiruvdan o'tsa: APPROVED yoz
 Agar muammo bo'lsa: REJECTED: [sabab] yoz, keyin tuzatilgan versiyani FIXED: dan keyin yoz"""
 
 
-def editor_agent(post: str, title: str, channel_tag: str) -> str:
-    prompt = EDITOR_PROMPT_TEMPLATE.format(channel_tag=channel_tag)
+def editor_agent(post: str, title: str, channel_tag: str,
+                  prompt_template: str | None = None) -> str:
+    template = prompt_template or EDITOR_PROMPT_TEMPLATE
+    try:
+        prompt = template.format(channel_tag=channel_tag)
+    except (KeyError, IndexError) as e:
+        log.warning(f'[Editor] Custom prompt formatlashda xato ({e}) — standart promptga qaytildi')
+        prompt = EDITOR_PROMPT_TEMPLATE.format(channel_tag=channel_tag)
     result = groq_call(
         prompt,
         f"Review this Uzbek post about: {title}\n\nPOST:\n{post}",
@@ -455,14 +476,23 @@ def generate_post(article: dict, project_id: int) -> str:
     jargon = config.get('jargon') or DEFAULT_JARGON
     emoji_legend = config.get('emoji_legend') or DEFAULT_EMOJI_LEGEND
 
+    # Dashboard'dagi "Prompts" bo'limidan tahrirlangan bo'lsa, shu custom
+    # promptlar ishlatiladi (har biri mustaqil — faqat bittasi tahrirlangan
+    # bo'lishi ham mumkin). Bo'lmasa standart (kod ichidagi) promptga qaytadi.
+    prompts = config.get('prompts') or {}
+    researcher_prompt = prompts.get('researcher') or None
+    writer_prompt = prompts.get('writer') or None
+    editor_prompt = prompts.get('editor') or None
+
     log.info(f'[Pipeline] Boshlandi (project_id={project_id}): {article["title"][:60]}')
 
-    facts = researcher_agent(article, domain_description, jargon)
+    facts = researcher_agent(article, domain_description, jargon, researcher_prompt)
     raw_post = writer_agent(
         article, facts, nicknames, channel_tag, tone,
         domain_description, content_types, emoji_legend, jargon,
+        writer_prompt,
     )
-    edited = editor_agent(raw_post, article['title'], channel_tag)
+    edited = editor_agent(raw_post, article['title'], channel_tag, editor_prompt)
 
     post = ensure_channel_tag(edited, channel_tag)
     ok, reason = validate_post(post)

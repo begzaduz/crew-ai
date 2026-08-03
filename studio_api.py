@@ -11,6 +11,9 @@ import re
 import database
 import telegram_utils
 from config import DAILY_POST_BUDGET
+from workflows.rss_news import (
+    RESEARCHER_PROMPT_TEMPLATE, WRITER_PROMPT_TEMPLATE, EDITOR_PROMPT_TEMPLATE,
+)
 
 log = logging.getLogger(__name__)
 
@@ -75,6 +78,15 @@ def delete_source(data: dict) -> tuple[int, object]:
 def get_config(project_id: int) -> tuple[int, object]:
     try:
         cfg = database.get_workflow_config(project_id) or {}
+        cfg = dict(cfg)
+        # 'prompt_defaults' faqat Dashboard'da ko'rsatish uchun — DB'da
+        # saqlanmaydi. Admin custom prompt yozmagan bo'lsa, Dashboard shu
+        # standart matnni boshlang'ich qiymat sifatida ko'rsatadi.
+        cfg['prompt_defaults'] = {
+            'researcher': RESEARCHER_PROMPT_TEMPLATE,
+            'writer': WRITER_PROMPT_TEMPLATE,
+            'editor': EDITOR_PROMPT_TEMPLATE,
+        }
         return 200, cfg
     except Exception as e:
         log.error(f'[StudioAPI] get_config: {e}')
@@ -84,8 +96,9 @@ def get_config(project_id: int) -> tuple[int, object]:
 _ALLOWED_CONFIG_KEYS = {
     'terminology', 'nicknames', 'channel_tag', 'tone',
     'domain_description', 'content_types', 'jargon', 'emoji_legend',
-    'telegram_channel_id',
+    'telegram_channel_id', 'prompts',
 }
+_ALLOWED_PROMPT_KEYS = {'researcher', 'writer', 'editor'}
 
 
 def update_config(project_id: int, data: dict) -> tuple[int, object]:
@@ -106,6 +119,15 @@ def update_config(project_id: int, data: dict) -> tuple[int, object]:
         return 400, {'error': "domain_description matn bo'lishi kerak"}
     if 'telegram_channel_id' in patch and not isinstance(patch['telegram_channel_id'], str):
         return 400, {'error': "telegram_channel_id matn bo'lishi kerak (masalan @KanalNomi)"}
+    if 'prompts' in patch:
+        if not isinstance(patch['prompts'], dict):
+            return 400, {'error': "prompts obyekt (researcher/writer/editor) bo'lishi kerak"}
+        bad_keys = set(patch['prompts']) - _ALLOWED_PROMPT_KEYS
+        if bad_keys:
+            return 400, {'error': f"prompts faqat researcher/writer/editor kalitlarini qabul qiladi (noto'g'ri: {sorted(bad_keys)})"}
+        # Bo'sh qiymat chiqarib tashlanadi — shu orqali admin bitta
+        # promptni "tozalab" standartga qaytarishi mumkin.
+        patch['prompts'] = {k: v for k, v in patch['prompts'].items() if isinstance(v, str) and v.strip()}
     try:
         cfg = database.update_workflow_config(project_id, patch)
         log.info(f'[StudioAPI] Config yangilandi (project={project_id}): {list(patch.keys())}')

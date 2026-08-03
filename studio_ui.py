@@ -236,6 +236,10 @@ STUDIO_HTML = """<!DOCTYPE html>
         <div class="group-label">Create</div>
         <div class="nav-item" data-view="studio" onclick="switchView('studio')">AI Content Studio</div>
       </div>
+      <div class="group">
+        <div class="group-label">Advanced</div>
+        <div class="nav-item" data-view="prompts" onclick="switchView('prompts')">Prompts</div>
+      </div>
     </nav>
     <div class="sidebar-foot"><span class="status-dot"></span> <span id="sidebar-foot-text">Yuklanmoqda...</span></div>
   </aside>
@@ -379,6 +383,37 @@ STUDIO_HTML = """<!DOCTYPE html>
           <button class="btn btn-gold" onclick="saveEmojiLegend()">Saqlash</button>
         </div>
       </details>
+    </div>
+
+    <!-- PROMPTS (Advanced) -->
+    <div class="view" id="view-prompts">
+      <div class="page-head"><h1>Prompts</h1><p>3 agent (Researcher → Writer → Editor) uchun xom promptlar. Bo'sh qoldirilsa — standart prompt ishlatiladi.</p></div>
+
+      <details class="kb-card" open>
+        <summary>Researcher prompt</summary>
+        <div style="margin-top:10px">
+          <textarea id="prompt-researcher" style="min-height:220px; font-family:monospace; font-size:11.5px;" placeholder="Standart prompt ishlatilyapti..."></textarea>
+        </div>
+      </details>
+
+      <details class="kb-card" open>
+        <summary>Writer prompt</summary>
+        <div style="margin-top:10px">
+          <textarea id="prompt-writer" style="min-height:260px; font-family:monospace; font-size:11.5px;" placeholder="Standart prompt ishlatilyapti..."></textarea>
+        </div>
+      </details>
+
+      <details class="kb-card" open>
+        <summary>Editor prompt</summary>
+        <div style="margin-top:10px">
+          <textarea id="prompt-editor" style="min-height:160px; font-family:monospace; font-size:11.5px;" placeholder="Standart prompt ishlatilyapti..."></textarea>
+        </div>
+      </details>
+
+      <div style="display:flex; gap:8px; margin-top:4px">
+        <button class="btn btn-ghost" onclick="resetPromptsToDefault()">Standartga qaytarish</button>
+        <button class="btn btn-gold" onclick="savePrompts()">Saqlash</button>
+      </div>
     </div>
 
   </main>
@@ -526,7 +561,7 @@ STUDIO_HTML = """<!DOCTYPE html>
   const VIEW_TITLES = {
     dashboard: 'Dashboard', queue: 'Review Queue', published: 'Published',
     rejected: 'Rejected', sources: 'RSS Sources', kb: 'Knowledge Base',
-    studio: 'AI Content Studio',
+    studio: 'AI Content Studio', prompts: 'Prompts',
   };
 
   function switchView(name) {
@@ -543,6 +578,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       if (name === 'rejected') loadAssets('rejected', 'queue-rejected');
       if (name === 'sources') loadSources();
       if (name === 'kb') loadConfig();
+      if (name === 'prompts') loadPrompts();
     }
   }
 
@@ -978,6 +1014,68 @@ STUDIO_HTML = """<!DOCTYPE html>
       document.getElementById('tone-field').value = cfg.tone || '';
     } catch (e) {
       toast('Config yuklanmadi');
+    }
+  }
+
+  // ── Prompts (Advanced) ────────────────────────────────────
+  // Textarea bo'sh qoldirilsa, standart prompt DB'ga yozilmaydi
+  // (studio_api.update_config bo'sh qatorlarni filtrlaydi) — shuning
+  // uchun har doim 'standart' (prompt_defaults) matnni ko'rsatamiz,
+  // custom saqlangan bo'lsa o'shani ko'rsatamiz.
+  let promptDefaults = {};
+
+  async function loadPrompts() {
+    try {
+      const res = await apiGet('/api/studio/config');
+      const cfg = await res.json();
+      promptDefaults = cfg.prompt_defaults || {};
+      const custom = cfg.prompts || {};
+      document.getElementById('prompt-researcher').value = custom.researcher || promptDefaults.researcher || '';
+      document.getElementById('prompt-writer').value = custom.writer || promptDefaults.writer || '';
+      document.getElementById('prompt-editor').value = custom.editor || promptDefaults.editor || '';
+    } catch (e) {
+      toast('Promptlar yuklanmadi');
+    }
+  }
+
+  async function savePrompts() {
+    const prompts = {
+      researcher: document.getElementById('prompt-researcher').value,
+      writer: document.getElementById('prompt-writer').value,
+      editor: document.getElementById('prompt-editor').value,
+    };
+    try {
+      const res = await apiPost('/api/studio/config', { prompts });
+      const data = await res.json();
+      if (!res.ok) { toast(data.error || 'Xatolik'); return; }
+      toast('Promptlar saqlandi');
+    } catch (e) {
+      toast('Saqlashda xatolik yuz berdi');
+    }
+  }
+
+  async function resetPromptsToDefault() {
+    const ok = await showConfirmModal({
+      title: 'Standartga qaytarish',
+      message: "Barcha 3 ta prompt standart (kod ichidagi) versiyaga qaytariladi. Davom etasizmi?",
+      okLabel: 'Qaytarish',
+      okClass: 'btn-danger',
+    });
+    if (!ok) return;
+    document.getElementById('prompt-researcher').value = promptDefaults.researcher || '';
+    document.getElementById('prompt-writer').value = promptDefaults.writer || '';
+    document.getElementById('prompt-editor').value = promptDefaults.editor || '';
+    // Bo'sh string yuborilmaydi (server filtrlaydi bo'lsa ham), shuning
+    // uchun standart matnni ANIQ qiymat sifatida emas, bo'sh sifatida
+    // saqlash uchun maxsus so'rov: prompts obyektini butunlay bo'sh
+    // yuboramiz — bu DB'dagi custom promptlarni tozalaydi.
+    try {
+      const res = await apiPost('/api/studio/config', { prompts: {} });
+      const data = await res.json();
+      if (!res.ok) { toast(data.error || 'Xatolik'); return; }
+      toast('Standartga qaytarildi');
+    } catch (e) {
+      toast('Xatolik yuz berdi');
     }
   }
 
