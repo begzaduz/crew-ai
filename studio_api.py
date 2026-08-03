@@ -42,11 +42,37 @@ def add_source(project_id: int, data: dict) -> tuple[int, object]:
     if not (url.startswith('http://') or url.startswith('https://')):
         return 400, {'error': "url http:// yoki https:// bilan boshlanishi kerak"}
     try:
-        row = database.add_data_source(project_id, url)
+        priority = int(data.get('priority') or 0)
+    except (TypeError, ValueError):
+        return 400, {'error': 'priority butun son bo\'lishi kerak'}
+    category = (data.get('category') or '').strip() or None
+    try:
+        row = database.add_data_source(project_id, url, priority=priority, category=category)
         log.info(f'[StudioAPI] Yangi manba qo\'shildi (project={project_id}): {url}')
         return 200, row
     except Exception as e:
         log.error(f'[StudioAPI] add_source: {e}')
+        return 500, {'error': str(e)}
+
+
+def update_source_meta(data: dict) -> tuple[int, object]:
+    sid = data.get('id')
+    if sid is None:
+        return 400, {'error': 'id kerak'}
+    priority = data.get('priority')
+    category = data.get('category')
+    if priority is not None:
+        try:
+            priority = int(priority)
+        except (TypeError, ValueError):
+            return 400, {'error': 'priority butun son bo\'lishi kerak'}
+    if category is not None:
+        category = category.strip() or None
+    try:
+        database.update_data_source_meta(int(sid), priority=priority, category=category)
+        return 200, {'ok': True}
+    except Exception as e:
+        log.error(f'[StudioAPI] update_source_meta: {e}')
         return 500, {'error': str(e)}
 
 
@@ -358,6 +384,7 @@ GET_ROUTES = {
 POST_ROUTES = {
     '/api/studio/projects':         create_project,
     '/api/studio/sources':          lambda project_id, body: add_source(project_id, body),
+    '/api/studio/sources/update':   lambda project_id, body: update_source_meta(body),
     '/api/studio/sources/toggle':   lambda project_id, body: toggle_source(body),
     '/api/studio/sources/delete':   lambda project_id, body: delete_source(body),
     '/api/studio/config':           lambda project_id, body: update_config(project_id, body),

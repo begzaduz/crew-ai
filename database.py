@@ -155,6 +155,12 @@ def init_db() -> None:
             cur.execute("ALTER TABLE data_sources ADD COLUMN IF NOT EXISTS name TEXT")
             cur.execute("ALTER TABLE data_sources ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE")
             cur.execute("ALTER TABLE data_sources ADD COLUMN IF NOT EXISTS config JSONB NOT NULL DEFAULT '{}'::jsonb")
+            # Manba ustuvorligi (yuqori raqam = birinchi ko'rib chiqiladi,
+            # Dashboard'da tartiblash uchun) va kategoriya (masalan
+            # "transfer", "match-report" — Dashboard'da filtrlash/guruhlash
+            # uchun, hozircha faqat ko'rsatish/tahrirlash maqsadida).
+            cur.execute("ALTER TABLE data_sources ADD COLUMN IF NOT EXISTS priority INTEGER NOT NULL DEFAULT 0")
+            cur.execute("ALTER TABLE data_sources ADD COLUMN IF NOT EXISTS category TEXT")
 
             # 'assets' va 'reviews' jadvallari allaqachon mavjud (studio_schema.py
             # orqali yaratilgan): assets(id, project_id, source_url, type, title,
@@ -456,12 +462,14 @@ def get_data_sources(project_id: int, active_only: bool = False) -> list[dict]:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             if active_only:
                 cur.execute(
-                    'SELECT * FROM data_sources WHERE project_id=%s AND enabled=TRUE ORDER BY id',
+                    '''SELECT * FROM data_sources WHERE project_id=%s AND enabled=TRUE
+                       ORDER BY priority DESC, id ASC''',
                     (project_id,),
                 )
             else:
                 cur.execute(
-                    'SELECT * FROM data_sources WHERE project_id=%s ORDER BY id',
+                    '''SELECT * FROM data_sources WHERE project_id=%s
+                       ORDER BY priority DESC, id ASC''',
                     (project_id,),
                 )
             return [_normalize_source(dict(r)) for r in cur.fetchall()]
@@ -469,7 +477,8 @@ def get_data_sources(project_id: int, active_only: bool = False) -> list[dict]:
         _put_conn(conn)
 
 
-def add_data_source(project_id: int, url: str, source_type: str = 'rss') -> dict:
+def add_data_source(project_id: int, url: str, source_type: str = 'rss',
+                     priority: int = 0, category: str | None = None) -> dict:
     url = url.strip()
     try:
         from urllib.parse import urlparse
@@ -480,13 +489,36 @@ def add_data_source(project_id: int, url: str, source_type: str = 'rss') -> dict
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                '''INSERT INTO data_sources (project_id, type, name, enabled, config)
-                   VALUES (%s, %s, %s, TRUE, %s) RETURNING *''',
-                (project_id, source_type, name, psycopg2.extras.Json({'url': url})),
+                '''INSERT INTO data_sources (project_id, type, name, enabled, config, priority, category)
+                   VALUES (%s, %s, %s, TRUE, %s, %s, %s) RETURNING *''',
+                (project_id, source_type, name, psycopg2.extras.Json({'url': url}), priority, category),
             )
             row = cur.fetchone()
         conn.commit()
         return _normalize_source(dict(row))
+    finally:
+        _put_conn(conn)
+
+
+def update_data_source_meta(source_id: int, priority: int | None = None,
+                             category: str | None = None) -> None:
+    """Dashboard'dan mavjud manbaning ustuvorligi/kategoriyasini tahrirlash.
+    Faqat berilgan (None bo'lmagan) maydonlar yangilanadi."""
+    if priority is None and category is None:
+        return
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            if priority is not None and category is not None:
+                cur.execute(
+                    'UPDATE data_sources SET priority=%s, category=%s WHERE id=%s',
+                    (priority, category, source_id),
+                )
+            elif priority is not None:
+                cur.execute('UPDATE data_sources SET priority=%s WHERE id=%s', (priority, source_id))
+            else:
+                cur.execute('UPDATE data_sources SET category=%s WHERE id=%s', (category, source_id))
+        conn.commit()
     finally:
         _put_conn(conn)
 

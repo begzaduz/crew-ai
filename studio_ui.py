@@ -159,11 +159,13 @@ STUDIO_HTML = """<!DOCTYPE html>
   .ai-steps{ display:flex; gap:12px; flex-wrap:wrap; font-size:10.5px; color:var(--text-faint); }
   .ai-steps span::before{ content:'○ '; color:var(--gold); }
 
-  .source-row{ display:flex; align-items:center; gap:12px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:12px 16px; margin-bottom:9px; }
-  .source-row .s-url{ flex:1; font-size:12px; color:var(--text-dim); word-break:break-all; }
+  .source-row{ display:flex; align-items:center; gap:12px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:12px 16px; margin-bottom:9px; flex-wrap:wrap; }
+  .source-row .s-url{ flex:1; min-width:160px; font-size:12px; color:var(--text-dim); word-break:break-all; }
   .source-row .s-url.inactive{ opacity:.4; text-decoration:line-through; }
-  .add-source-row{ display:flex; gap:8px; margin-top:12px; }
-  .add-source-row input{ flex:1; }
+  .source-meta-input{ width:56px; background:var(--navy-deep); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:11.5px; padding:5px 6px; text-align:center; }
+  .source-cat-input{ width:100px; background:var(--navy-deep); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:11.5px; padding:5px 8px; }
+  .add-source-row{ display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+  .add-source-row input[type=text]#new-source-url{ flex:1; min-width:180px; }
 
   .kb-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px; margin-bottom:14px; }
   .kb-card summary{ cursor:pointer; font-size:13px; font-weight:600; list-style:none; display:flex; align-items:center; justify-content:space-between; }
@@ -319,10 +321,12 @@ STUDIO_HTML = """<!DOCTYPE html>
 
     <!-- SOURCES -->
     <div class="view" id="view-sources">
-      <div class="page-head"><h1>Sources · RSS</h1><p>Studio Lab AI shu manbalardan yangiliklarni oladi</p></div>
+      <div class="page-head"><h1>Sources · RSS</h1><p>Studio Lab AI shu manbalardan yangiliklarni oladi. Ustuvorlik (priority) yuqori bo'lgan manba birinchi tekshiriladi.</p></div>
       <div id="sources-list"><div class="empty">Yuklanmoqda...</div></div>
       <div class="add-source-row">
         <input type="text" id="new-source-url" placeholder="https://example.com/rss">
+        <input type="text" id="new-source-category" class="source-cat-input" placeholder="kategoriya">
+        <input type="number" id="new-source-priority" class="source-meta-input" placeholder="0" value="0">
         <button class="btn btn-gold" onclick="addSource()">Qo'shish</button>
       </div>
     </div>
@@ -867,6 +871,8 @@ STUDIO_HTML = """<!DOCTYPE html>
       el.innerHTML = rows.map(r => `
         <div class="source-row">
           <span class="s-url ${r.active ? '' : 'inactive'}">${escapeHtml(r.url)}</span>
+          <input type="text" class="source-cat-input" value="${escapeHtml(r.category || '')}" placeholder="kategoriya" onchange="updateSourceMeta(${r.id}, undefined, this.value)">
+          <input type="number" class="source-meta-input" value="${r.priority ?? 0}" title="Ustuvorlik" onchange="updateSourceMeta(${r.id}, this.value, undefined)">
           <button class="btn btn-ghost" onclick="toggleSource(${r.id}, ${!r.active})">${r.active ? "O'chirish" : 'Yoqish'}</button>
           <button class="btn btn-danger" onclick="deleteSource(${r.id})">O'chirib tashlash</button>
         </div>
@@ -876,14 +882,36 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
   }
 
+  async function updateSourceMeta(id, priority, category) {
+    const body = { id };
+    if (priority !== undefined) body.priority = priority;
+    if (category !== undefined) body.category = category;
+    try {
+      const res = await apiPost('/api/studio/sources/update', body);
+      const data = await res.json();
+      if (!res.ok) { toast(data.error || 'Xatolik'); return; }
+      toast('Saqlandi');
+      if (priority !== undefined) loadSources(); // tartib o'zgargani uchun ro'yxatni yangilaymiz
+    } catch (e) {
+      toast('Saqlashda xatolik yuz berdi');
+    }
+  }
+
   async function addSource() {
     const input = document.getElementById('new-source-url');
+    const catInput = document.getElementById('new-source-category');
+    const prioInput = document.getElementById('new-source-priority');
     const url = input.value.trim();
     if (!url) return;
-    const res = await apiPost('/api/studio/sources', { url });
+    const body = { url };
+    if (catInput && catInput.value.trim()) body.category = catInput.value.trim();
+    if (prioInput && prioInput.value.trim()) body.priority = prioInput.value.trim();
+    const res = await apiPost('/api/studio/sources', body);
     const data = await res.json();
     if (!res.ok) { toast(data.error || 'Xatolik'); return; }
     input.value = '';
+    if (catInput) catInput.value = '';
+    if (prioInput) prioInput.value = '0';
     toast('Manba qo\\'shildi');
     loadSources();
     loadStats();
