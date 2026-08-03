@@ -241,7 +241,7 @@ def handle_update(update: dict) -> None:
 
     try:
         if text == '/whoami':
-            tg_send(chat_id, f'Sizning chat_id: {chat_id}\nADMIN_IDS: {ADMIN_IDS}')
+            tg_send(chat_id, f'Sizning chat_id: {chat_id}')
             return
 
         if text.startswith('/') and not is_admin(chat_id):
@@ -336,14 +336,43 @@ class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
     Dashboard va Telegram webhook so'rovlari bir-birini bloklamasligi uchun."""
     daemon_threads = True
 class WebhookHandler(BaseHTTPRequestHandler):
-    def _json(self, data, status: int = 200) -> None:
+    # Autentifikatsiyasiz so'rovchi juda katta body yuborib serverni
+    # xotira bilan band qilishi (DoS) mumkin edi — endi Content-Length
+    # shu chegaradan oshsa, body o'qilmasdan darhol 413 qaytariladi.
+    # 2 MB — eng katta legitim so'rov (masalan uzun custom prompt yoki
+    # Telegram webhook update)dan ancha katta, shuning uchun haqiqiy
+    # foydalanishga xalaqit bermaydi.
+    MAX_BODY_SIZE = 2_000_000
+
+    def _json(self, data, status: int = 200, cors: bool = False) -> None:
         body = json.dumps(data, default=str, ensure_ascii=False).encode('utf-8')
         self.send_response(status)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
-        self.send_header('Access-Control-Allow-Origin', '*')
+        # MUHIM: CORS faqat chindan ham tashqi/kross-origin foydalanish
+        # kerak bo'lgan PUBLIC endpointlarga (mini-app: /api/posts,
+        # /api/matches, /api/standings) yoqiladi. Autentifikatsiya talab
+        # qiladigan /api/studio/* endpointlariga bu sarlavha keraksiz —
+        # Dashboard JS bir xil origin'dan ishlaydi, va CORS'ni yoqish
+        # faqat keraksiz hujum yuzasini kengaytiradi.
+        if cors:
+            self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate')
         self.end_headers()
         self.wfile.write(body)
+
+    def _read_body_or_413(self) -> bytes | None:
+        """Content-Length'ni MAX_BODY_SIZE bilan solishtiradi va faqat
+        chegaradan oshmasa body'ni o'qib qaytaradi. Oshsa, body UMUMAN
+        o'qilmaydi (xotira band qilinmaydi) va 413 qaytariladi — chaqiruvchi
+        None qaytgan holatda darhol return qilishi kerak."""
+        length = int(self.headers.get('Content-Length', 0))
+        if length > self.MAX_BODY_SIZE:
+            self.send_response(413)
+            self.send_header('Content-Type', 'text/plain; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(b'Payload too large')
+            return None
+        return self.rfile.read(length)
 
     def _deny_dashboard_auth(self) -> None:
         self.send_response(401)
@@ -358,10 +387,16 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
         # ── Studio Dashboard API (manba qo'shish, terminologiya saqlash) ──
         if path in studio_api.POST_ROUTES:
-            length = int(self.headers.get('Content-Length', 0))
-            body = self.rfile.read(length)
+            # MUHIM: auth headerlar orqali tekshiriladi (body kerak emas)
+            # — shuning uchun avval shu tekshiriladi. Bo'lmasa,
+            # autentifikatsiyasiz so'rovchi katta body yubortirib serverni
+            # (hali auth rad etilishidan OLDIN) xotira bilan band qilishi
+            # mumkin edi.
             if not _check_dashboard_auth(self.headers):
                 self._deny_dashboard_auth()
+                return
+            body = self._read_body_or_413()
+            if body is None:
                 return
             try:
                 data = json.loads(body) if body else {}
@@ -384,8 +419,9 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.wfile.write(b'Unauthorized')
             return
 
-        length = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(length)
+        body = self._read_body_or_413()
+        if body is None:
+            return
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b'OK')
@@ -433,33 +469,33 @@ class WebhookHandler(BaseHTTPRequestHandler):
         if path == '/api/posts':
             try:
                 posts = get_recent_posts(50)
-                self._json(posts)
+                self._json(posts, cors=True)
             except Exception as e:
                 log.error(f'[API] /api/posts xato: {e}')
-                self._json([], status=500)
+                self._json([], status=500, cors=True)
             return
 
         if path == '/api/standings':
             try:
                 rows = fetch_standings()
-                self._json(rows)
+                self._json(rows, cors=True)
             except Exception as e:
                 log.error(f'[API] /api/standings xato: {e}')
-                self._json(None, status=500)
+                self._json(None, status=500, cors=True)
             return
 
         if path == '/api/matches':
             qs = parse_qs(parsed.query)
             date_str = (qs.get('date') or [''])[0]
             if not date_str:
-                self._json({'error': 'date kerak (YYYY-MM-DD)'}, status=400)
+                self._json({'error': 'date kerak (YYYY-MM-DD)'}, status=400, cors=True)
                 return
             try:
                 matches = fetch_matches_by_date(date_str)
-                self._json(matches)
+                self._json(matches, cors=True)
             except Exception as e:
                 log.error(f'[API] /api/matches xato: {e}')
-                self._json(None, status=500)
+                self._json(None, status=500, cors=True)
             return
 
         if path in ('/', '/webapp', '/webapp/'):
