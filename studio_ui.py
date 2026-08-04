@@ -190,7 +190,7 @@ STUDIO_HTML = """<!DOCTYPE html>
   .toast{ position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--surface-2); border:1px solid var(--border); color:#fff; padding:10px 18px; border-radius:8px; font-size:13px; opacity:0; transition:opacity .2s; pointer-events:none; z-index:100; }
   .toast.show{ opacity:1; }
 
-  /* Tasdiqlash modali (brauzer confirm()'ining o'rnini bosadi) */
+  /* Confirm/prompt modal (replaces browser confirm()/prompt()) */
   .modal-overlay{ position:fixed; inset:0; background:rgba(10,18,36,.65); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; z-index:200; opacity:0; pointer-events:none; transition:opacity .15s ease; }
   .modal-overlay.show{ opacity:1; pointer-events:auto; }
   .modal-box{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:22px 24px; max-width:360px; width:90%; transform:translateY(6px); transition:transform .15s ease; box-shadow:0 12px 32px rgba(0,0,0,.4); }
@@ -459,7 +459,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     setTimeout(() => t.classList.remove('show'), 1800);
   }
 
-  // ── Tasdiqlash / kiritish modali (brauzer confirm()/prompt()'i o'rniga) ──
+  // ── Confirm / input modal (replaces browser confirm()/prompt()) ──
   let _confirmResolve = null;
   let _confirmModalMode = 'confirm';
 
@@ -477,8 +477,8 @@ STUDIO_HTML = """<!DOCTYPE html>
     });
   }
 
-  // Loyiha nomi kabi qisqa matn kiritish uchun (brauzer prompt()'i o'rniga,
-  // dashboard uslubiga mos modal bilan). Bekor qilinsa null qaytaradi.
+  // For short text input (e.g. project name) instead of browser prompt(),
+  // styled to match the dashboard. Returns null if cancelled.
   function showInputModal({ title, message = '', placeholder = '', okLabel = 'Yaratish', okClass = 'btn-gold' }) {
     return new Promise(resolve => {
       _confirmResolve = resolve;
@@ -508,14 +508,14 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
   }
 
-  // ── Loyihalar (CaaS: bitta Dashboard — ko'p loyiha) ────────
-  // currentProjectId brauzer localStorage'da saqlanadi — sahifa qayta
-  // yuklanganda ham oxirgi tanlangan loyiha eslab qolinadi.
+  // ── Projects (CaaS: one Dashboard — multiple projects) ────
+  // currentProjectId is persisted in browser localStorage so the last
+  // selected project is remembered across page reloads.
   let currentProjectId = Number(localStorage.getItem('studiolab_project_id')) || null;
   let projectsList = [];
 
-  // Har bir Dashboard API so'roviga avtomatik project_id qo'shadi —
-  // shunda alohida joyda unutib qo'yish xavfi yo'q.
+  // Automatically appends project_id to every Dashboard API request —
+  // avoids forgetting it at individual call sites.
   function apiGet(path) {
     const sep = path.includes('?') ? '&' : '?';
     return fetch(`${path}${sep}project_id=${currentProjectId}`);
@@ -529,8 +529,8 @@ STUDIO_HTML = """<!DOCTYPE html>
     });
   }
 
-  // Ichki (dasturiy) tur kodlari ('rss_news', 'manual') foydalanuvchiga
-  // xom holda ko'rinmasligi uchun — o'qiladigan yorliqqa aylantiradi.
+  // Converts internal type codes ('rss_news', 'manual') into a
+  // human-readable label instead of showing them raw.
   const ASSET_TYPE_LABELS = { rss_news: 'RSS', manual: "Qo'lda kiritilgan" };
   function assetTypeLabel(type) {
     return ASSET_TYPE_LABELS[type] || type || '';
@@ -542,12 +542,12 @@ STUDIO_HTML = """<!DOCTYPE html>
     return div.innerHTML;
   }
 
-  // escapeHtml() faqat &, <, > belgilarini kodlaydi — bu ELEMENT KONTENTI
-  // (masalan <div>${escapeHtml(x)}</div>) uchun yetarli, lekin HTML ATRIBUT
-  // qiymati ichida (href="...", style="url('...')", value="...") YETARLI
-  // EMAS, chunki qo'shtirnoq (") kodlanmaydi — atributdan chiqib, yangi
-  // atribut (masalan onerror=, onclick=) qo'shish orqali XSS imkonini beradi.
-  // Atribut kontekstida FAQAT shu funksiya ishlatilishi kerak.
+  // escapeHtml() only encodes &, <, > — sufficient for ELEMENT CONTENT
+  // (e.g. <div>${escapeHtml(x)}</div>), but NOT sufficient inside an
+  // HTML ATTRIBUTE value (href="...", style="url('...')", value="..."),
+  // because quotes (") are not encoded — allowing an attacker to break
+  // out of the attribute and inject a new one (e.g. onerror=, onclick=),
+  // i.e. XSS. Use this function, never escapeHtml(), in attribute context.
   function escapeAttr(str) {
     return (str || '').replace(/[&<>"']/g, c => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -567,9 +567,8 @@ STUDIO_HTML = """<!DOCTYPE html>
     } catch (e) { return ''; }
   }
 
-  // Post qaysi RSS saytdan kelganini ko'rsatish uchun (bir nechta
-  // manba haqiqatan ham ishlayaptimi, yoki faqat bittasi natija
-  // beryaptimi — shuni Dashboard'da tezda ko'rish uchun).
+  // Shows which RSS site a post came from — a quick way to see whether
+  // multiple sources are actually producing results or only one is.
   function hostFromUrl(url) {
     if (!url) return null;
     try {
@@ -617,7 +616,7 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   // ── Dashboard ────────────────────────────────────────────
   let assetCache = {};
-  let lastPendingCount = null; // polling: yangi draft kelganda bildirish uchun
+  let lastPendingCount = null; // polling: used to notify when a new draft arrives
 
   async function loadStats() {
     try {
@@ -903,7 +902,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       const data = await res.json();
       if (!res.ok) { toast(data.error || 'Xatolik'); return; }
       toast('Saqlandi');
-      if (priority !== undefined) loadSources(); // tartib o'zgargani uchun ro'yxatni yangilaymiz
+      if (priority !== undefined) loadSources(); // refresh list since order changed
     } catch (e) {
       toast('Saqlashda xatolik yuz berdi');
     }
@@ -987,8 +986,8 @@ STUDIO_HTML = """<!DOCTYPE html>
     return dict;
   }
 
-  // ── Oddiy ro'yxat muharriri (key-value emas, bitta qiymat/qator) —
-  // Kontent turlari kabi oddiy ro'yxatlar uchun ──────────────────────
+  // ── Simple list editor (not key-value, single value per row) —
+  // for plain lists like content types ──────────────────────
   function renderListRows(containerId, list) {
     const el = document.getElementById(containerId);
     const items = (list && list.length) ? list : [''];
@@ -1099,10 +1098,10 @@ STUDIO_HTML = """<!DOCTYPE html>
   }
 
   // ── Prompts (Advanced) ────────────────────────────────────
-  // Textarea bo'sh qoldirilsa, standart prompt DB'ga yozilmaydi
-  // (studio_api.update_config bo'sh qatorlarni filtrlaydi) — shuning
-  // uchun har doim 'standart' (prompt_defaults) matnni ko'rsatamiz,
-  // custom saqlangan bo'lsa o'shani ko'rsatamiz.
+  // Textarea left empty: default prompt is not written to DB
+  // (studio_api.update_config filters out empty rows), so we always
+  // show the 'default' (prompt_defaults) text as a starting point,
+  // or the saved custom one if present.
   let promptDefaults = {};
 
   async function loadPrompts() {
@@ -1146,10 +1145,10 @@ STUDIO_HTML = """<!DOCTYPE html>
     document.getElementById('prompt-researcher').value = promptDefaults.researcher || '';
     document.getElementById('prompt-writer').value = promptDefaults.writer || '';
     document.getElementById('prompt-editor').value = promptDefaults.editor || '';
-    // Bo'sh string yuborilmaydi (server filtrlaydi bo'lsa ham), shuning
-    // uchun standart matnni ANIQ qiymat sifatida emas, bo'sh sifatida
-    // saqlash uchun maxsus so'rov: prompts obyektini butunlay bo'sh
-    // yuboramiz — bu DB'dagi custom promptlarni tozalaydi.
+    // We don't send an empty string (the server would filter it anyway);
+    // to explicitly clear back to default rather than to a literal empty
+    // value, we send the whole prompts object as empty — this wipes any
+    // custom prompts stored in the DB.
     try {
       const res = await apiPost('/api/studio/config', { prompts: {} });
       const data = await res.json();
@@ -1160,11 +1159,10 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
   }
 
-  // ── Polling — fon jarayoni (RSS avtomatik post qo'shishi,
-  // boshqa admin tasdiqlashi va h.k.) natijalarini sahifani qo'lda
-  // yangilamasdan ko'rsatish uchun. Tab fonda bo'lganda (document.hidden)
-  // so'rov yubormaydi — resurs tejash uchun. Tab qayta ochilganda darhol
-  // bir marta yangilaydi.
+  // ── Polling — shows the results of background processes (RSS
+  // auto-posting, another admin approving, etc.) without a manual page
+  // refresh. Skips requests while the tab is hidden (document.hidden) to
+  // save resources, and refreshes once immediately when the tab reopens.
   const POLL_INTERVAL_MS = 25000;
   let pollTimer = null;
 
@@ -1180,7 +1178,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     if (!document.hidden) refreshCurrentLists();
   });
 
-  // ── Loyihalar: yuklash, almashtirish, yangi yaratish ──────
+  // ── Projects: load, switch, create ──────────────────────
   async function initProjects() {
     try {
       const res = await fetch('/api/studio/projects');
@@ -1189,9 +1187,9 @@ STUDIO_HTML = """<!DOCTYPE html>
         document.getElementById('sidebar-foot-text').textContent = 'Loyiha topilmadi';
         return;
       }
-      // Saqlangan tanlov haqiqiy ro'yxatda bormi tekshiramiz; bo'lmasa
-      // (masalan boshqa brauzerdan birinchi marta kirilganda), birinchi
-      // loyihaga tushamiz.
+      // Check whether the saved selection still exists in the list; if
+      // not (e.g. first visit from a different browser), fall back to
+      // the first project.
       if (!currentProjectId || !projectsList.some(p => p.id === currentProjectId)) {
         currentProjectId = projectsList[0].id;
         localStorage.setItem('studiolab_project_id', String(currentProjectId));
@@ -1219,9 +1217,8 @@ STUDIO_HTML = """<!DOCTYPE html>
     currentProjectId = Number(idStr);
     localStorage.setItem('studiolab_project_id', String(currentProjectId));
     updateSidebarFoot();
-    // Eski loyihaning keshlangan holatini tozalab, hozirgi ko'rinishni
-    // qayta yuklaymiz — aks holda boshqa loyihaning postlari bir lahza
-    // ko'rinib turishi mumkin.
+    // Clear the old project's cached state and reload the current view —
+    // otherwise another project's posts could briefly flash on screen.
     assetCache = {};
     lastPendingCount = null;
     closeRightPanel();
