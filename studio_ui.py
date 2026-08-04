@@ -542,6 +542,18 @@ STUDIO_HTML = """<!DOCTYPE html>
     return div.innerHTML;
   }
 
+  // escapeHtml() faqat &, <, > belgilarini kodlaydi — bu ELEMENT KONTENTI
+  // (masalan <div>${escapeHtml(x)}</div>) uchun yetarli, lekin HTML ATRIBUT
+  // qiymati ichida (href="...", style="url('...')", value="...") YETARLI
+  // EMAS, chunki qo'shtirnoq (") kodlanmaydi — atributdan chiqib, yangi
+  // atribut (masalan onerror=, onclick=) qo'shish orqali XSS imkonini beradi.
+  // Atribut kontekstida FAQAT shu funksiya ishlatilishi kerak.
+  function escapeAttr(str) {
+    return (str || '').replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
   function fmtTime(iso) {
     if (!iso) return '';
     try {
@@ -732,9 +744,9 @@ STUDIO_HTML = """<!DOCTYPE html>
     rp.innerHTML = `
       <button class="rp-close-mobile" onclick="closeRightPanel()">← Orqaga</button>
       <div class="rp-title">${escapeHtml((a.title || '').slice(0, 60))}</div>
-      <div class="rp-sub">${escapeHtml(assetTypeLabel(a.type))} · ${fmtTime(a.created_at)}${a.source_url ? ' · <a class="rp-link" href="' + escapeHtml(a.source_url) + '" target="_blank">manba</a>' : ''}</div>
+      <div class="rp-sub">${escapeHtml(assetTypeLabel(a.type))} · ${fmtTime(a.created_at)}${a.source_url ? ' · <a class="rp-link" href="' + escapeAttr(a.source_url) + '" target="_blank">manba</a>' : ''}</div>
 
-      ${a.image_url ? `<div class="rp-section"><div class="rp-label">Rasm</div><div class="rp-img" style="background-image:url('${escapeHtml(a.image_url)}')"></div></div>` : ''}
+      ${a.image_url ? `<div class="rp-section"><div class="rp-label">Rasm</div><div class="rp-img" style="background-image:url('${escapeAttr(a.image_url)}')"></div></div>` : ''}
 
       <div class="rp-section">
         <div class="rp-label">Post matni ${isDraft ? '(tahrirlash mumkin)' : ''}</div>
@@ -871,7 +883,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       el.innerHTML = rows.map(r => `
         <div class="source-row">
           <span class="s-url ${r.active ? '' : 'inactive'}">${escapeHtml(r.url)}</span>
-          <input type="text" class="source-cat-input" value="${escapeHtml(r.category || '')}" placeholder="kategoriya" onchange="updateSourceMeta(${r.id}, undefined, this.value)">
+          <input type="text" class="source-cat-input" value="${escapeAttr(r.category || '')}" placeholder="kategoriya" onchange="updateSourceMeta(${r.id}, undefined, this.value)">
           <input type="number" class="source-meta-input" value="${r.priority ?? 0}" title="Ustuvorlik" onchange="updateSourceMeta(${r.id}, this.value, undefined)">
           <button class="btn btn-ghost" onclick="toggleSource(${r.id}, ${!r.active})">${r.active ? "O'chirish" : 'Yoqish'}</button>
           <button class="btn btn-danger" onclick="deleteSource(${r.id})">O'chirib tashlash</button>
@@ -943,8 +955,8 @@ STUDIO_HTML = """<!DOCTYPE html>
     if (!entries.length) entries.push(['', '']);
     el.innerHTML = entries.map(([k, v]) => `
       <div class="term-row">
-        <input type="text" class="term-key" value="${escapeHtml(k)}" placeholder="Kalit">
-        <input type="text" class="term-val" value="${escapeHtml(v)}" placeholder="Qiymat">
+        <input type="text" class="term-key" value="${escapeAttr(k)}" placeholder="Kalit">
+        <input type="text" class="term-val" value="${escapeAttr(v)}" placeholder="Qiymat">
         <button class="btn btn-danger" onclick="this.closest('.term-row').remove()">✕</button>
       </div>
     `).join('');
@@ -982,7 +994,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     const items = (list && list.length) ? list : [''];
     el.innerHTML = items.map(v => `
       <div class="term-row" style="grid-template-columns:1fr auto">
-        <input type="text" class="list-val" value="${escapeHtml(v)}" placeholder="masalan: TRANSFER">
+        <input type="text" class="list-val" value="${escapeAttr(v)}" placeholder="masalan: TRANSFER">
         <button class="btn btn-danger" onclick="this.closest('.term-row').remove()">✕</button>
       </div>
     `).join('');
