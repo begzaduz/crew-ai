@@ -536,6 +536,16 @@ def news_loop() -> None:
 if __name__ == '__main__':
     init_db()
     PROJECT_ID = _bootstrap_project()
+    # Bir martalik migratsiya: sanitize_telegram_html() generate_post()'ga
+    # qo'shilishidan OLDIN yaratilgan draft'larda xom <br> kabi teglar
+    # qolib ketgan bo'lishi mumkin edi. Idempotent — hech narsa topilmasa
+    # yoki hammasi allaqachon toza bo'lsa, hech narsa o'zgarmaydi.
+    try:
+        fixed = database.resanitize_draft_assets(PROJECT_ID)
+        if fixed:
+            log.info(f'[Server] {fixed} ta eski draft xom HTML tegdan tozalandi.')
+    except Exception as e:
+        log.error(f'[Server] resanitize_draft_assets xato: {e}')
     log.info(
         f'[Server] Port {PORT} da ishga tushdi | Admin IDlar: {ADMIN_IDS} | '
         f'Kunlik API byudjeti: {DAILY_API_LIMIT} | Loyiha ID: {PROJECT_ID} '

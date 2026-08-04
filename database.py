@@ -618,8 +618,50 @@ def get_last_asset_created_at(project_id: int):
         _put_conn(conn)
 
 
+def resanitize_draft_assets(project_id: int | None = None) -> int:
+    """Eski kod bilan yaratilgan (hozirgi sanitize_telegram_html() qo'shilishidan
+    OLDIN saqlangan) draft'lardagi xom HTML teglarni (masalan <br>) tozalaydi.
+    Faqat status='draft' bo'lgan (hali kanalga yuborilmagan) postlarga tegadi —
+    published/rejected o'zgarmaydi. Idempotent: allaqachon toza matnga qayta
+    ishlov berish hech narsani o'zgartirmaydi, shuning uchun har safar server
+    ishga tushganda xavfsiz chaqirilishi mumkin. Nechta yozuv tuzatilganini
+    qaytaradi."""
+    from telegram_utils import sanitize_telegram_html
+
+    conn = _get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if project_id is not None:
+                cur.execute(
+                    "SELECT id, content FROM assets WHERE status='draft' AND project_id=%s AND content ~ '<[a-zA-Z/]'",
+                    (project_id,),
+                )
+            else:
+                cur.execute(
+                    "SELECT id, content FROM assets WHERE status='draft' AND content ~ '<[a-zA-Z/]'",
+                )
+            rows = cur.fetchall()
+            fixed = 0
+            for row in rows:
+                cleaned = sanitize_telegram_html(row['content'] or '')
+                if cleaned != row['content']:
+                    cur.execute('UPDATE assets SET content=%s WHERE id=%s', (cleaned, row['id']))
+                    fixed += 1
+        conn.commit()
+        if fixed:
+            log.info(f'[DB] {fixed} ta eski draft xom HTML tegdan tozalandi.')
+        return fixed
+    finally:
+        _put_conn(conn)
+
+
 def update_asset_content(asset_id: int, content: str, title: str | None = None) -> None:
-    """Dashboard'dagi 'Edit' — tasdiqlashdan oldin postni qo'lda tahrirlash."""
+    """Dashboard'dagi 'Edit' — tasdiqlashdan oldin postni qo'lda tahrirlash.
+    Saqlashdan oldin HAR DOIM sanitize_telegram_html() orqali o'tkaziladi —
+    admin qo'lda <br> yoki boshqa Telegram tushunmaydigan teg kiritib qo'ysa
+    ham, DB'da va keyingi Telegram'ga yuborishda toza matn qoladi."""
+    from telegram_utils import sanitize_telegram_html
+    content = sanitize_telegram_html(content)
     conn = _get_conn()
     try:
         with conn.cursor() as cur:
