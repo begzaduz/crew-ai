@@ -68,7 +68,6 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
   }
 
-  /* Sidebar */
   .sidebar{ background:var(--navy-deep); border-right:1px solid var(--border); overflow-y:auto; display:flex; flex-direction:column; }
   .brand{ display:flex; align-items:center; gap:10px; padding:20px 18px 16px; border-bottom:1px solid var(--border); }
   .project-switcher{ display:flex; gap:6px; padding:12px 18px; border-bottom:1px solid var(--border); }
@@ -91,7 +90,6 @@ STUDIO_HTML = """<!DOCTYPE html>
   .status-dot.error{ background:var(--red); }
   .status-dot.idle{ background:var(--text-faint); }
 
-  /* Main */
   main{ overflow-y:auto; padding:24px 28px 60px; }
   .view{ display:none; }
   .view.active{ display:block; }
@@ -145,6 +143,10 @@ STUDIO_HTML = """<!DOCTYPE html>
   .btn-ghost{ background:var(--surface-2); color:var(--text-dim); border:1px solid var(--border); }
   .btn-danger{ background:rgba(226,81,90,.12); color:var(--red); border:1px solid rgba(226,81,90,.3); }
   .btn-green{ background:var(--green); color:var(--navy-deep); }
+  .btn-icon{ display:inline-flex; align-items:center; justify-content:center; padding:9px; }
+  .btn-icon svg{ width:17px; height:17px; flex-shrink:0; }
+  .btn-icon-sm{ display:inline-flex; align-items:center; justify-content:center; padding:6px; }
+  .btn-icon-sm svg{ width:13px; height:13px; flex-shrink:0; }
 
   .studio-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px 22px; max-width:640px; }
   .studio-card .subtitle{ color:var(--text-faint); font-size:12.5px; margin-bottom:16px; }
@@ -175,7 +177,6 @@ STUDIO_HTML = """<!DOCTYPE html>
   .term-row{ display:grid; grid-template-columns:1fr 1fr auto; gap:8px; margin-bottom:6px; }
   .field-label{ font-size:10.5px; color:var(--text-faint); margin-bottom:4px; display:block; }
 
-  /* Right panel */
   .rightpanel{ background:var(--navy-deep); border-left:1px solid var(--border); padding:20px 18px; overflow-y:auto; }
   .rp-empty{ height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; color:var(--text-faint); font-size:12.5px; gap:10px; }
   .rp-title{ font-size:14.5px; font-weight:700; margin-bottom:3px; }
@@ -190,7 +191,6 @@ STUDIO_HTML = """<!DOCTYPE html>
   .toast{ position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--surface-2); border:1px solid var(--border); color:#fff; padding:10px 18px; border-radius:8px; font-size:13px; opacity:0; transition:opacity .2s; pointer-events:none; z-index:100; }
   .toast.show{ opacity:1; }
 
-  /* Confirm/prompt modal (replaces browser confirm()/prompt()) */
   .modal-overlay{ position:fixed; inset:0; background:rgba(10,18,36,.65); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; z-index:200; opacity:0; pointer-events:none; transition:opacity .15s ease; }
   .modal-overlay.show{ opacity:1; pointer-events:auto; }
   .modal-box{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:22px 24px; max-width:360px; width:90%; transform:translateY(6px); transition:transform .15s ease; box-shadow:0 12px 32px rgba(0,0,0,.4); }
@@ -250,7 +250,6 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   <main>
 
-    <!-- DASHBOARD -->
     <div class="view active" id="view-dashboard">
       <div class="page-head" style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
         <div><h1>Dashboard</h1><p>AI-Powered Creative Operations — Ingliz Futboli loyihasi</p></div>
@@ -283,25 +282,21 @@ STUDIO_HTML = """<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- REVIEW QUEUE -->
     <div class="view" id="view-queue">
       <div class="page-head"><h1>Review Queue</h1><p>Tasdiqlashni kutayotgan postlar</p></div>
       <div class="queue-grid" id="queue-draft"><div class="empty">Yuklanmoqda...</div></div>
     </div>
 
-    <!-- PUBLISHED -->
     <div class="view" id="view-published">
       <div class="page-head"><h1>Published</h1><p>@Inglizfutbol kanaliga chiqqan postlar</p></div>
       <div class="queue-grid" id="queue-published"><div class="empty">Yuklanmoqda...</div></div>
     </div>
 
-    <!-- REJECTED -->
     <div class="view" id="view-rejected">
       <div class="page-head"><h1>Rejected</h1><p>Rad etilgan postlar</p></div>
       <div class="queue-grid" id="queue-rejected"><div class="empty">Yuklanmoqda...</div></div>
     </div>
 
-    <!-- AI CONTENT STUDIO -->
     <div class="view" id="view-studio">
       <div class="page-head"><h1>AI Content Studio</h1><p>Paste text, article, quote or URL. Studio Lab will transform it into a publication-ready post.</p></div>
       <div class="studio-card">
@@ -319,7 +314,6 @@ STUDIO_HTML = """<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- SOURCES -->
     <div class="view" id="view-sources">
       <div class="page-head"><h1>Sources · RSS</h1><p>Studio Lab AI shu manbalardan yangiliklarni oladi. Ustuvorlik (priority) yuqori bo'lgan manba birinchi tekshiriladi.</p></div>
       <div id="sources-list"><div class="empty">Yuklanmoqda...</div></div>
@@ -331,7 +325,6 @@ STUDIO_HTML = """<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- KNOWLEDGE BASE -->
     <div class="view" id="view-kb">
       <div class="page-head"><h1>Knowledge Base</h1><p>AI shu ma'lumotlardan foydalanib post yozadi</p></div>
 
@@ -396,7 +389,6 @@ STUDIO_HTML = """<!DOCTYPE html>
       </details>
     </div>
 
-    <!-- PROMPTS (Advanced) -->
     <div class="view" id="view-prompts">
       <div class="page-head"><h1>Prompts</h1><p>3 agent (Researcher → Writer → Editor) uchun xom promptlar. Bo'sh qoldirilsa — standart prompt ishlatiladi.</p></div>
 
@@ -459,7 +451,6 @@ STUDIO_HTML = """<!DOCTYPE html>
     setTimeout(() => t.classList.remove('show'), 1800);
   }
 
-  // ── Confirm / input modal (replaces browser confirm()/prompt()) ──
   let _confirmResolve = null;
   let _confirmModalMode = 'confirm';
 
@@ -477,8 +468,6 @@ STUDIO_HTML = """<!DOCTYPE html>
     });
   }
 
-  // For short text input (e.g. project name) instead of browser prompt(),
-  // styled to match the dashboard. Returns null if cancelled.
   function showInputModal({ title, message = '', placeholder = '', okLabel = 'Yaratish', okClass = 'btn-gold' }) {
     return new Promise(resolve => {
       _confirmResolve = resolve;
@@ -508,14 +497,9 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
   }
 
-  // ── Projects (CaaS: one Dashboard — multiple projects) ────
-  // currentProjectId is persisted in browser localStorage so the last
-  // selected project is remembered across page reloads.
   let currentProjectId = Number(localStorage.getItem('studiolab_project_id')) || null;
   let projectsList = [];
 
-  // Automatically appends project_id to every Dashboard API request —
-  // avoids forgetting it at individual call sites.
   function apiGet(path) {
     const sep = path.includes('?') ? '&' : '?';
     return fetch(`${path}${sep}project_id=${currentProjectId}`);
@@ -529,8 +513,6 @@ STUDIO_HTML = """<!DOCTYPE html>
     });
   }
 
-  // Converts internal type codes ('rss_news', 'manual') into a
-  // human-readable label instead of showing them raw.
   const ASSET_TYPE_LABELS = { rss_news: 'RSS', manual: "Qo'lda kiritilgan" };
   function assetTypeLabel(type) {
     return ASSET_TYPE_LABELS[type] || type || '';
@@ -542,12 +524,6 @@ STUDIO_HTML = """<!DOCTYPE html>
     return div.innerHTML;
   }
 
-  // escapeHtml() only encodes &, <, > — sufficient for ELEMENT CONTENT
-  // (e.g. <div>${escapeHtml(x)}</div>), but NOT sufficient inside an
-  // HTML ATTRIBUTE value (href="...", style="url('...')", value="..."),
-  // because quotes (") are not encoded — allowing an attacker to break
-  // out of the attribute and inject a new one (e.g. onerror=, onclick=),
-  // i.e. XSS. Use this function, never escapeHtml(), in attribute context.
   function escapeAttr(str) {
     return (str || '').replace(/[&<>"']/g, c => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -567,8 +543,6 @@ STUDIO_HTML = """<!DOCTYPE html>
     } catch (e) { return ''; }
   }
 
-  // Shows which RSS site a post came from — a quick way to see whether
-  // multiple sources are actually producing results or only one is.
   function hostFromUrl(url) {
     if (!url) return null;
     try {
@@ -578,7 +552,6 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
   }
 
-  // ── View switching ─────────────────────────────────────
   const viewLoaded = {};
   const VIEW_TITLES = {
     dashboard: 'Dashboard', queue: 'Review Queue', published: 'Published',
@@ -614,9 +587,8 @@ STUDIO_HTML = """<!DOCTYPE html>
     document.getElementById('mobile-backdrop').classList.remove('show');
   }
 
-  // ── Dashboard ────────────────────────────────────────────
   let assetCache = {};
-  let lastPendingCount = null; // polling: used to notify when a new draft arrives
+  let lastPendingCount = null;
 
   async function loadStats() {
     try {
@@ -687,7 +659,6 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
   }
 
-  // ── Assets (Review Queue / Published / Rejected) ─────────
   async function loadAssets(status, containerId) {
     const el = document.getElementById(containerId);
     try {
@@ -754,9 +725,15 @@ STUDIO_HTML = """<!DOCTYPE html>
 
       ${isDraft ? `
         <div class="rp-actions">
-          <button class="btn btn-ghost" onclick="saveAsset(${a.id})">Saqlash</button>
-          <button class="btn btn-green" onclick="approveAsset(${a.id})">Tasdiqlash va yuborish</button>
-          <button class="btn btn-danger" onclick="rejectAsset(${a.id})">Rad etish</button>
+          <button class="btn btn-ghost btn-icon" onclick="saveAsset(${a.id})" title="Saqlash" aria-label="Saqlash">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
+          </button>
+          <button class="btn btn-green btn-icon" onclick="approveAsset(${a.id})" title="Tasdiqlash va yuborish" aria-label="Tasdiqlash va yuborish">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+          <button class="btn btn-danger btn-icon" onclick="rejectAsset(${a.id})" title="Rad etish" aria-label="Rad etish">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          </button>
         </div>
       ` : ''}
     `;
@@ -859,7 +836,6 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
   }
 
-  // ── Sources ──────────────────────────────────────────────
   function focusNewSourceInput() {
     const input = document.getElementById('new-source-url');
     if (input) { input.scrollIntoView({ behavior: 'smooth', block: 'center' }); input.focus(); }
@@ -902,7 +878,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       const data = await res.json();
       if (!res.ok) { toast(data.error || 'Xatolik'); return; }
       toast('Saqlandi');
-      if (priority !== undefined) loadSources(); // refresh list since order changed
+      if (priority !== undefined) loadSources();
     } catch (e) {
       toast('Saqlashda xatolik yuz berdi');
     }
@@ -947,7 +923,6 @@ STUDIO_HTML = """<!DOCTYPE html>
     loadStats();
   }
 
-  // ── Knowledge Base (terminology / nicknames / channel) ────
   function renderRows(containerId, dict) {
     const el = document.getElementById(containerId);
     const entries = Object.entries(dict || {});
@@ -956,7 +931,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       <div class="term-row">
         <input type="text" class="term-key" value="${escapeAttr(k)}" placeholder="Kalit">
         <input type="text" class="term-val" value="${escapeAttr(v)}" placeholder="Qiymat">
-        <button class="btn btn-danger" onclick="this.closest('.term-row').remove()">✕</button>
+        <button class="btn btn-danger btn-icon-sm" onclick="this.closest('.term-row').remove()" title="O'chirish" aria-label="O'chirish"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
     `).join('');
     const countEl = document.getElementById(containerId.replace('-rows', '-count'));
@@ -970,7 +945,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     row.innerHTML = `
       <input type="text" class="term-key" placeholder="Inglizcha">
       <input type="text" class="term-val" placeholder="O'zbekcha">
-      <button class="btn btn-danger" onclick="this.closest('.term-row').remove()">✕</button>
+      <button class="btn btn-danger btn-icon-sm" onclick="this.closest('.term-row').remove()" title="O'chirish" aria-label="O'chirish"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     `;
     el.appendChild(row);
   }
@@ -986,15 +961,13 @@ STUDIO_HTML = """<!DOCTYPE html>
     return dict;
   }
 
-  // ── Simple list editor (not key-value, single value per row) —
-  // for plain lists like content types ──────────────────────
   function renderListRows(containerId, list) {
     const el = document.getElementById(containerId);
     const items = (list && list.length) ? list : [''];
     el.innerHTML = items.map(v => `
       <div class="term-row" style="grid-template-columns:1fr auto">
         <input type="text" class="list-val" value="${escapeAttr(v)}" placeholder="masalan: TRANSFER">
-        <button class="btn btn-danger" onclick="this.closest('.term-row').remove()">✕</button>
+        <button class="btn btn-danger btn-icon-sm" onclick="this.closest('.term-row').remove()" title="O'chirish" aria-label="O'chirish"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
     `).join('');
     const countEl = document.getElementById(containerId.replace('-rows', '-count'));
@@ -1008,7 +981,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     row.style.gridTemplateColumns = '1fr auto';
     row.innerHTML = `
       <input type="text" class="list-val" placeholder="masalan: TRANSFER">
-      <button class="btn btn-danger" onclick="this.closest('.term-row').remove()">✕</button>
+      <button class="btn btn-danger btn-icon-sm" onclick="this.closest('.term-row').remove()" title="O'chirish" aria-label="O'chirish"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     `;
     el.appendChild(row);
   }
@@ -1097,11 +1070,6 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
   }
 
-  // ── Prompts (Advanced) ────────────────────────────────────
-  // Textarea left empty: default prompt is not written to DB
-  // (studio_api.update_config filters out empty rows), so we always
-  // show the 'default' (prompt_defaults) text as a starting point,
-  // or the saved custom one if present.
   let promptDefaults = {};
 
   async function loadPrompts() {
@@ -1145,10 +1113,6 @@ STUDIO_HTML = """<!DOCTYPE html>
     document.getElementById('prompt-researcher').value = promptDefaults.researcher || '';
     document.getElementById('prompt-writer').value = promptDefaults.writer || '';
     document.getElementById('prompt-editor').value = promptDefaults.editor || '';
-    // We don't send an empty string (the server would filter it anyway);
-    // to explicitly clear back to default rather than to a literal empty
-    // value, we send the whole prompts object as empty — this wipes any
-    // custom prompts stored in the DB.
     try {
       const res = await apiPost('/api/studio/config', { prompts: {} });
       const data = await res.json();
@@ -1159,10 +1123,6 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
   }
 
-  // ── Polling — shows the results of background processes (RSS
-  // auto-posting, another admin approving, etc.) without a manual page
-  // refresh. Skips requests while the tab is hidden (document.hidden) to
-  // save resources, and refreshes once immediately when the tab reopens.
   const POLL_INTERVAL_MS = 25000;
   let pollTimer = null;
 
@@ -1178,7 +1138,6 @@ STUDIO_HTML = """<!DOCTYPE html>
     if (!document.hidden) refreshCurrentLists();
   });
 
-  // ── Projects: load, switch, create ──────────────────────
   async function initProjects() {
     try {
       const res = await fetch('/api/studio/projects');
@@ -1187,9 +1146,6 @@ STUDIO_HTML = """<!DOCTYPE html>
         document.getElementById('sidebar-foot-text').textContent = 'Loyiha topilmadi';
         return;
       }
-      // Check whether the saved selection still exists in the list; if
-      // not (e.g. first visit from a different browser), fall back to
-      // the first project.
       if (!currentProjectId || !projectsList.some(p => p.id === currentProjectId)) {
         currentProjectId = projectsList[0].id;
         localStorage.setItem('studiolab_project_id', String(currentProjectId));
@@ -1217,8 +1173,6 @@ STUDIO_HTML = """<!DOCTYPE html>
     currentProjectId = Number(idStr);
     localStorage.setItem('studiolab_project_id', String(currentProjectId));
     updateSidebarFoot();
-    // Clear the old project's cached state and reload the current view —
-    // otherwise another project's posts could briefly flash on screen.
     assetCache = {};
     lastPendingCount = null;
     closeRightPanel();
@@ -1253,7 +1207,6 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
   }
 
-  // ── Boot ───────────────────────────────────────────────
   (async () => {
     await initProjects();
     loadStats();
