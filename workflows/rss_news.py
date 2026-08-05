@@ -505,7 +505,16 @@ def generate_post(article: dict, project_id: int) -> str:
     config = database.get_workflow_config(project_id)
     terminology = config.get('terminology') or DEFAULT_TERMINOLOGY
     nicknames = config.get('nicknames') or DEFAULT_NICKNAMES
-    channel_tag = config.get('channel_tag') or DEFAULT_CHANNEL_TAG
+    # MUHIM: channel_tag hech qachon boshqa loyihaning DEFAULT_CHANNEL_TAG'iga
+    # (@Inglizfutbol) tushib qolmasligi kerak — bu haqiqiy xato bo'lardi
+    # (masalan Liverpool.asia postiga "@Inglizfutbol" yozilib qolishi).
+    # channel_tag berilmagan bo'lsa, avval telegram_channel_id'ga (agar
+    # sozlangan bo'lsa — bir xil qiymat ikkalasi uchun ham mantiqiy),
+    # aks holda umuman tag qo'shilmaydi (bo'sh qoldiriladi va ogohlantirish
+    # yoziladi) — noto'g'ri brend nomidan ko'ra tegsiz post afzal.
+    channel_tag = config.get('channel_tag') or config.get('telegram_channel_id') or ''
+    if not channel_tag:
+        log.warning(f'[Pipeline] project_id={project_id}: channel_tag sozlanmagan — postga hech qanday tag qo\'shilmaydi.')
     tone = config.get('tone') or DEFAULT_TONE
     domain_description = config.get('domain_description') or DEFAULT_DOMAIN_DESCRIPTION
     content_types = config.get('content_types') or DEFAULT_CONTENT_TYPES
