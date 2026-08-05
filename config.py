@@ -19,7 +19,7 @@ WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET', '')
 
 # ── Gemini ──────────────────────────────────────────────
 GEMINI_KEY   = os.getenv('GEMINI_KEY', '')
-GEMINI_MODEL = 'gemini-2.5-flash'
+GEMINI_MODEL = 'gemini-3.6-flash'
 
 # ── Football-data.org ─────────────────────────────────────
 FOOTBALL_DATA_KEY = os.getenv('FOOTBALL_DATA_KEY', '')

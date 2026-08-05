@@ -203,6 +203,16 @@ def groq_call(system_prompt: str, user_prompt: str,
 
     client — chaqiruvchi (generate_post) loyihaning o'z Gemini kalitidan
     yasagan client. Berilmasa, global (asosiy) kalit ishlatiladi.
+
+    MUHIM (2026-08): Gemini 3.x modellari (shu jumladan GEMINI_MODEL)
+    endi 'temperature'/'top_p'/'top_k' parametrlarini qabul qilmaydi —
+    Google buni butunlay olib tashladi, yuborilsa xato qaytarishi mumkin.
+    Shuning uchun 'temperature' argumenti bu yerda endi API'ga
+    yuborilmaydi (faqat chaqiruvchi tomonda semantik farqlash uchun
+    signature'da qoldirilgan). Determinizm kerak bo'lsa, buning o'rniga
+    system_instruction ichida aniq qoidalar yozish tavsiya etiladi.
+    Eski 'thinking_budget=0' esa yangi 'thinking_level=\"minimal\"'ga
+    almashtirildi (tezkor/arzon rejim ekvivalenti).
     """
     client = client or gemini_client
     try:
@@ -211,9 +221,8 @@ def groq_call(system_prompt: str, user_prompt: str,
             contents=user_prompt,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
-                temperature=temperature,
                 max_output_tokens=max_tokens,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
+                thinking_config=types.ThinkingConfig(thinking_level='minimal'),
             ),
         )
         return (resp.text or '').strip()
@@ -235,9 +244,8 @@ def groq_call(system_prompt: str, user_prompt: str,
                 contents=user_prompt,
                 config=types.GenerateContentConfig(
                     system_instruction=system_prompt,
-                    temperature=temperature,
                     max_output_tokens=max_tokens,
-                    thinking_config=types.ThinkingConfig(thinking_budget=0),
+                    thinking_config=types.ThinkingConfig(thinking_level='minimal'),
                 ),
             )
             return (resp.text or '').strip()
