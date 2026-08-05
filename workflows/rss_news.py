@@ -33,6 +33,23 @@ from telegram_utils import sanitize_telegram_html
 log = logging.getLogger(__name__)
 gemini_client = genai.Client(api_key=GEMINI_KEY)
 
+# Loyihalar endi o'zining alohida Gemini API kalitidan foydalanishi mumkin
+# (workflows.config['gemini_api_key']) — shunda bir nechta loyiha bitta
+# umumiy kalitning kunlik RPD kvotasini baham ko'rmaydi (har biri o'z
+# Google akkaunti/kalitining kvotasi bilan cheklanadi). Kalit berilmagan
+# loyihalar avvalgidek global GEMINI_KEY'dan foydalanadi. Har xil kalit
+# uchun genai.Client()'ni qayta yaratmaslik uchun keshlanadi.
+_client_cache: dict[str, genai.Client] = {GEMINI_KEY: gemini_client}
+
+
+def get_gemini_client(api_key: str | None = None) -> genai.Client:
+    key = (api_key or '').strip() or GEMINI_KEY
+    client = _client_cache.get(key)
+    if client is None:
+        client = genai.Client(api_key=key)
+        _client_cache[key] = client
+    return client
+
 
 # ── Standart (seed) qiymatlar — "Ingliz Futboli" loyihasi uchun ────
 # Bular FAQAT loyiha birinchi marta yaratilganda DB'ga yoziladi
@@ -174,7 +191,8 @@ def _nicknames_block(nicknames: dict) -> str:
 
 # ── Gemini API — kvota tejash uchun retry o'chirilgan ─────
 def groq_call(system_prompt: str, user_prompt: str,
-              temperature: float = 0.4, max_tokens: int = 700) -> str:
+              temperature: float = 0.4, max_tokens: int = 700,
+              client: genai.Client | None = None) -> str:
     """
     Gemini ga so'rov.
     RPD (kunlik) limit juda kichik bo'lgani uchun 429/RESOURCE_EXHAUSTED
@@ -182,9 +200,13 @@ def groq_call(system_prompt: str, user_prompt: str,
     tugagan holatda befoyda, faqat vaqtni yo'qotadi va process'ni bloklaydi.
     Faqat vaqtinchalik server xatosida (5xx) 1 marta 15s dan keyin
     qayta urinadi, chunki bu kvotaga aloqasi yo'q, tarmoq/server muammosi.
+
+    client — chaqiruvchi (generate_post) loyihaning o'z Gemini kalitidan
+    yasagan client. Berilmasa, global (asosiy) kalit ishlatiladi.
     """
+    client = client or gemini_client
     try:
-        resp = gemini_client.models.generate_content(
+        resp = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=user_prompt,
             config=types.GenerateContentConfig(
@@ -208,7 +230,7 @@ def groq_call(system_prompt: str, user_prompt: str,
         log.warning('[Gemini] Server xato. 15s kutib 1 marta qayta urinamiz...')
         time.sleep(15)
         try:
-            resp = gemini_client.models.generate_content(
+            resp = client.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=user_prompt,
                 config=types.GenerateContentConfig(
@@ -274,7 +296,8 @@ BREAKING: [YES or NO]"""
 
 
 def researcher_agent(article: dict, domain_description: str, jargon: dict,
-                      prompt_template: str | None = None) -> str:
+                      prompt_template: str | None = None,
+                      client: genai.Client | None = None) -> str:
     content = fetch_article_text(article['url']) or ''
     if len(content) < 100:
         content = f"{article['title']}\n{article['description']}"
@@ -295,6 +318,7 @@ def researcher_agent(article: dict, domain_description: str, jargon: dict,
         prompt,
         f"Analyze this {domain_description} news:\n\nHEADLINE: {article['title']}\nCONTENT: {content[:2200]}",
         temperature=0.2, max_tokens=450,
+        client=client,
     )
     log.info(f'[Researcher] ✓ {article["title"][:50]}')
     return result
@@ -392,7 +416,8 @@ Hech qanday markdown ishlatma."""
 
 def writer_agent(article: dict, facts: str, nicknames: dict, channel_tag: str, tone: str,
                   domain_description: str, content_types: list, emoji_legend: dict,
-                  jargon: dict, prompt_template: str | None = None) -> str:
+                  jargon: dict, prompt_template: str | None = None,
+                  client: genai.Client | None = None) -> str:
     template = prompt_template or WRITER_PROMPT_TEMPLATE
     fmt_kwargs = dict(
         channel_tag=channel_tag,
@@ -412,6 +437,7 @@ def writer_agent(article: dict, facts: str, nicknames: dict, channel_tag: str, t
         prompt,
         f"Yangilik yoz:\n\nSARLAVHA: {article['title']}\nFAKTLAR:\n{facts}\n\nFaqat postni yoz:",
         temperature=0.5, max_tokens=700,
+        client=client,
     )
     log.info(f'[Writer] ✓ {len(result)} belgi')
     return result
@@ -435,7 +461,8 @@ Agar muammo bo'lsa: REJECTED: [sabab] yoz, keyin tuzatilgan versiyani FIXED: dan
 
 
 def editor_agent(post: str, title: str, channel_tag: str,
-                  prompt_template: str | None = None) -> str:
+                  prompt_template: str | None = None,
+                  client: genai.Client | None = None) -> str:
     template = prompt_template or EDITOR_PROMPT_TEMPLATE
     try:
         prompt = template.format(channel_tag=channel_tag)
@@ -446,6 +473,7 @@ def editor_agent(post: str, title: str, channel_tag: str,
         prompt,
         f"Review this Uzbek post about: {title}\n\nPOST:\n{post}",
         temperature=0.2, max_tokens=800,
+        client=client,
     )
     if 'APPROVED' in result:
         log.info('[Editor] ✓ Tasdiqlandi')
@@ -484,15 +512,20 @@ def generate_post(article: dict, project_id: int) -> str:
     writer_prompt = prompts.get('writer') or None
     editor_prompt = prompts.get('editor') or None
 
+    # Loyihaning o'z Gemini API kaliti bo'lsa, shu ishlatiladi (boshqa
+    # loyihalarning kunlik RPD kvotasiga umuman ta'sir qilmaydi). Bo'lmasa
+    # global (asosiy) kalitga qaytadi.
+    client = get_gemini_client(config.get('gemini_api_key'))
+
     log.info(f'[Pipeline] Boshlandi (project_id={project_id}): {article["title"][:60]}')
 
-    facts = researcher_agent(article, domain_description, jargon, researcher_prompt)
+    facts = researcher_agent(article, domain_description, jargon, researcher_prompt, client=client)
     raw_post = writer_agent(
         article, facts, nicknames, channel_tag, tone,
         domain_description, content_types, emoji_legend, jargon,
-        writer_prompt,
+        writer_prompt, client=client,
     )
-    edited = editor_agent(raw_post, article['title'], channel_tag, editor_prompt)
+    edited = editor_agent(raw_post, article['title'], channel_tag, editor_prompt, client=client)
 
     post = ensure_channel_tag(edited, channel_tag)
     ok, reason = validate_post(post)

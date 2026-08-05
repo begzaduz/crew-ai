@@ -113,6 +113,13 @@ def get_config(project_id: int) -> tuple[int, object]:
             'writer': WRITER_PROMPT_TEMPLATE,
             'editor': EDITOR_PROMPT_TEMPLATE,
         }
+        # Gemini API kalit — Dashboard'ga to'liq qiymat qaytarilmaydi (bu
+        # brauzer Network panelida ko'rinib qolishi mumkin). Faqat
+        # o'rnatilganmi degan belgi va oxirgi 4 belgi ko'rsatiladi;
+        # frontend buni saqlangan/saqlanmaganini bildirish uchun ishlatadi.
+        raw_key = cfg.pop('gemini_api_key', None)
+        cfg['gemini_api_key_set'] = bool(raw_key)
+        cfg['gemini_api_key_hint'] = raw_key[-4:] if raw_key else ''
         return 200, cfg
     except Exception as e:
         log.error(f'[StudioAPI] get_config: {e}')
@@ -122,7 +129,7 @@ def get_config(project_id: int) -> tuple[int, object]:
 _ALLOWED_CONFIG_KEYS = {
     'terminology', 'nicknames', 'channel_tag', 'tone',
     'domain_description', 'content_types', 'jargon', 'emoji_legend',
-    'telegram_channel_id', 'prompts',
+    'telegram_channel_id', 'prompts', 'gemini_api_key',
 }
 _ALLOWED_PROMPT_KEYS = {'researcher', 'writer', 'editor'}
 
@@ -145,6 +152,14 @@ def update_config(project_id: int, data: dict) -> tuple[int, object]:
         return 400, {'error': "domain_description matn bo'lishi kerak"}
     if 'telegram_channel_id' in patch and not isinstance(patch['telegram_channel_id'], str):
         return 400, {'error': "telegram_channel_id matn bo'lishi kerak (masalan @KanalNomi)"}
+    if 'gemini_api_key' in patch:
+        if not isinstance(patch['gemini_api_key'], str):
+            return 400, {'error': "gemini_api_key matn bo'lishi kerak"}
+        # Bo'sh qiymat yuborilsa — bu "o'zgartirmayman" degani (frontend
+        # parol maydonini bo'sh qoldirsa yuboradi), saqlangan kalitga
+        # tegilmaydi.
+        if not patch['gemini_api_key'].strip():
+            del patch['gemini_api_key']
     if 'prompts' in patch:
         if not isinstance(patch['prompts'], dict):
             return 400, {'error': "prompts obyekt (researcher/writer/editor) bo'lishi kerak"}
@@ -154,6 +169,8 @@ def update_config(project_id: int, data: dict) -> tuple[int, object]:
         # Bo'sh qiymat chiqarib tashlanadi — shu orqali admin bitta
         # promptni "tozalab" standartga qaytarishi mumkin.
         patch['prompts'] = {k: v for k, v in patch['prompts'].items() if isinstance(v, str) and v.strip()}
+    if not patch:
+        return 200, database.get_workflow_config(project_id) or {}
     try:
         cfg = database.update_workflow_config(project_id, patch)
         log.info(f'[StudioAPI] Config yangilandi (project={project_id}): {list(patch.keys())}')

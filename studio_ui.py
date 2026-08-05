@@ -339,6 +339,9 @@ STUDIO_HTML = """<!DOCTYPE html>
           <input type="text" id="channel-tag" placeholder="@Inglizfutbol" style="margin-bottom:10px">
           <span class="field-label">Uslub (tone)</span>
           <textarea id="tone-field" placeholder="professional uslubda, aniq va ishonchli..." style="min-height:44px"></textarea>
+          <span class="field-label" id="gemini-key-label">Gemini API kalit (ixtiyoriy — bo'lmasa umumiy kalit ishlatiladi)</span>
+          <input type="text" id="gemini-api-key" placeholder="AQ.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off" style="margin-bottom:2px">
+          <div style="font-size:10.5px; color:var(--text-faint); margin-bottom:10px">Bu loyiha shu kalit orqali ishlaydi va boshqa loyihalarning kunlik Gemini limitiga ta'sir qilmaydi. Bo'sh qoldirsangiz, saqlangan qiymat o'zgarmaydi.</div>
           <div style="margin-top:10px"><button class="btn btn-gold" onclick="saveChannelSettings()">Saqlash</button></div>
         </div>
       </details>
@@ -1046,10 +1049,13 @@ STUDIO_HTML = """<!DOCTYPE html>
     const channel_tag = document.getElementById('channel-tag').value.trim();
     const telegram_channel_id = document.getElementById('telegram-channel-id').value.trim();
     const tone = document.getElementById('tone-field').value.trim();
-    const res = await apiPost('/api/studio/config', { domain_description, channel_tag, telegram_channel_id, tone });
+    const gemini_api_key = document.getElementById('gemini-api-key').value.trim();
+    const res = await apiPost('/api/studio/config', { domain_description, channel_tag, telegram_channel_id, tone, gemini_api_key });
     const data = await res.json();
     if (!res.ok) { toast(data.error || 'Xatolik'); return; }
     toast('Saqlandi');
+    document.getElementById('gemini-api-key').value = '';
+    loadConfig();
   }
 
   async function loadConfig() {
@@ -1065,6 +1071,11 @@ STUDIO_HTML = """<!DOCTYPE html>
       document.getElementById('channel-tag').value = cfg.channel_tag || '';
       document.getElementById('telegram-channel-id').value = cfg.telegram_channel_id || '';
       document.getElementById('tone-field').value = cfg.tone || '';
+      const keyInput = document.getElementById('gemini-api-key');
+      keyInput.value = '';
+      keyInput.placeholder = cfg.gemini_api_key_set
+        ? `saqlangan: ••••${cfg.gemini_api_key_hint || ''} (o'zgartirish uchun yangisini yozing)`
+        : 'AQ.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx (bo\\'lmasa umumiy kalit ishlatiladi)';
     } catch (e) {
       toast('Config yuklanmadi');
     }
