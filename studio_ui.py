@@ -252,7 +252,7 @@ STUDIO_HTML = """<!DOCTYPE html>
 
     <div class="view active" id="view-dashboard">
       <div class="page-head" style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
-        <div><h1>Dashboard</h1><p>AI-Powered Creative Operations — Ingliz Futboli loyihasi</p></div>
+        <div><h1>Dashboard</h1><p id="dashboard-subtitle">AI-Powered Creative Operations</p></div>
         <div id="status-badge" style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-faint); white-space:nowrap; padding-top:2px;">
           <span class="status-dot" id="status-dot-2"></span><span id="status-badge-text">—</span>
         </div>
@@ -1206,7 +1206,10 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   function updateSidebarFoot() {
     const p = projectsList.find(p => p.id === currentProjectId);
-    document.getElementById('sidebar-foot-text').textContent = p ? `${p.name} loyihasi` : '';
+    const label = p ? `${p.name} loyihasi` : '';
+    document.getElementById('sidebar-foot-text').textContent = label;
+    const subtitle = document.getElementById('dashboard-subtitle');
+    if (subtitle) subtitle.textContent = p ? `AI-Powered Creative Operations — ${label}` : 'AI-Powered Creative Operations';
   }
 
   function switchProject(idStr) {
