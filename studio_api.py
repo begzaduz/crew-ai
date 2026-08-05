@@ -221,6 +221,8 @@ def get_dashboard_stats(project_id: int) -> tuple[int, object]:
             age_seconds = (now - last_dt).total_seconds()
             project_status = 'active' if age_seconds <= _STATUS_STALE_THRESHOLD_SECONDS else 'error'
 
+        api_calls_used = database.get_today_api_calls(project_id)
+
         return 200, {
             'pending_review': len(drafts),
             'published_total': len(published),
@@ -230,6 +232,8 @@ def get_dashboard_stats(project_id: int) -> tuple[int, object]:
             'total_sources': len(sources),
             'project_status': project_status,
             'last_run_at': last_run_at,
+            'api_calls_used_today': api_calls_used,
+            'api_calls_limit_today': DAILY_API_LIMIT,
         }
     except Exception as e:
         log.error(f'[StudioAPI] get_dashboard_stats: {e}')
@@ -387,6 +391,20 @@ def create_project(_project_id, data: dict) -> tuple[int, object]:
         return 500, {'error': str(e)}
 
 
+def reset_api_budget(project_id: int, _data: dict) -> tuple[int, object]:
+    """Loyihaning BUGUNGI ichki API hisoblagichini nolga tushiradi.
+    Sinov/debug paytida ichki kunlik limit (DAILY_POST_BUDGET) tugab
+    qolganda Dashboard'dan qo'lda tozalash uchun. Haqiqiy Gemini
+    kvotasiga (Google tomonida) ta'sir qilmaydi."""
+    try:
+        database.reset_today_api_calls(project_id)
+        log.info(f'[StudioAPI] Kunlik API byudjeti tozalandi (project={project_id}).')
+        return 200, {'ok': True}
+    except Exception as e:
+        log.error(f'[StudioAPI] reset_api_budget: {e}')
+        return 500, {'error': str(e)}
+
+
 # ── Route jadvallari — main.py shu yerdan dispatch qiladi ──────────
 # GET: (project_id, query_dict) -> (status, payload)
 GET_ROUTES = {
@@ -409,4 +427,5 @@ POST_ROUTES = {
     '/api/studio/assets/approve':   lambda project_id, body: approve_asset(body),
     '/api/studio/assets/reject':    lambda project_id, body: reject_asset(body),
     '/api/studio/assets/submit':    lambda project_id, body: submit_manual_content(project_id, body),
+    '/api/studio/budget/reset':     lambda project_id, body: reset_api_budget(project_id, body),
 }

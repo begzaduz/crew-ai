@@ -333,6 +333,27 @@ def increment_api_calls(project_id: int, n: int = 1) -> None:
         _put_conn(conn)
 
 
+def reset_today_api_calls(project_id: int) -> None:
+    """Berilgan loyihaning BUGUNGI (Pacific Time) ichki API hisoblagichini
+    nolga tushiradi. MUHIM: bu Gemini'ning haqiqiy tashqi kvotasiga
+    umuman ta'sir qilmaydi (u Google tomonida, bu yerda ko'rinmaydi) —
+    faqat Studio Lab'ning o'z ichki kunlik xavfsizlik limitini (
+    DAILY_POST_BUDGET) qayta hisoblaydi. Dashboard'da sinov paytida
+    band bo'lib qolgan limitni qo'lda tozalash uchun."""
+    today = _today_pacific()
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                'DELETE FROM daily_api_usage WHERE usage_date = %s AND project_id = %s',
+                (today, project_id),
+            )
+        conn.commit()
+        log.info(f'[DB] Kunlik API hisoblagich tozalandi (project_id={project_id}).')
+    finally:
+        _put_conn(conn)
+
+
 # ── Studio Lab: loyihalar (projects) ──────────────────────
 def get_project_by_slug(slug: str) -> dict | None:
     conn = _get_conn()

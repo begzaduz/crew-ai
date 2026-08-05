@@ -265,6 +265,14 @@ STUDIO_HTML = """<!DOCTYPE html>
         <div class="kpi-card"><div class="label">Faol manbalar</div><div class="value" id="kpi-sources">—</div></div>
       </div>
 
+      <div class="lifecycle-card" style="display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+        <div>
+          <h3 style="margin-bottom:6px">KUNLIK API BYUDJETI</h3>
+          <div style="font-size:12.5px; color:var(--text-dim)">Ichki xavfsizlik limiti (Gemini'ning haqiqiy kvotasiga aloqasi yo'q) — <span id="budget-used">—</span>/<span id="budget-limit">—</span> chaqiruv ishlatilgan</div>
+        </div>
+        <button class="btn btn-ghost" onclick="resetBudget()">Byudjetni tozalash</button>
+      </div>
+
       <div class="lifecycle-card">
         <h3>KONTENT HAYOT SIKLI</h3>
         <div class="lifecycle">
@@ -601,6 +609,8 @@ STUDIO_HTML = """<!DOCTYPE html>
       document.getElementById('kpi-pending').textContent = s.pending_review ?? '—';
       document.getElementById('kpi-published').textContent = s.published_total ?? '—';
       document.getElementById('kpi-sources').textContent = s.active_sources ?? '—';
+      document.getElementById('budget-used').textContent = s.api_calls_used_today ?? '—';
+      document.getElementById('budget-limit').textContent = s.api_calls_limit_today ?? '—';
       document.getElementById('lc-draft').textContent = s.pending_review ?? 0;
       document.getElementById('lc-published').textContent = s.published_total ?? 0;
       document.getElementById('lc-rejected').textContent = s.rejected_total ?? 0;
@@ -629,6 +639,25 @@ STUDIO_HTML = """<!DOCTYPE html>
       }
     } catch (e) {
       toast('Statistika yuklanmadi');
+    }
+  }
+
+  async function resetBudget() {
+    const ok = await showConfirmModal({
+      title: 'Kunlik byudjetni tozalash',
+      message: "Bu loyihaning bugungi ichki API hisoblagichi 0'ga tushiriladi. Google'ning haqiqiy Gemini kvotasiga ta'sir qilmaydi. Davom etasizmi?",
+      okLabel: 'Tozalash',
+      okClass: 'btn-gold',
+    });
+    if (!ok) return;
+    try {
+      const res = await apiPost('/api/studio/budget/reset', {});
+      const data = await res.json();
+      if (!res.ok) { toast(data.error || 'Xatolik'); return; }
+      toast('Byudjet tozalandi');
+      loadStats();
+    } catch (e) {
+      toast('Xatolik yuz berdi');
     }
   }
 
