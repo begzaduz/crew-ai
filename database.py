@@ -49,6 +49,12 @@ def init_db() -> None:
                     published_at TIMESTAMPTZ DEFAULT NOW()
                 )
             ''')
+            # MUHIM: har bir post O'Z LOYIHASIGA bog'lanadi — aks holda
+            # barcha loyihalarning tasdiqlangan postlari bitta umumiy
+            # oqimga aralashib, bir loyihaning Mini App'ida boshqa
+            # loyihaning postlari ko'rinib qolardi.
+            cur.execute("ALTER TABLE published_posts ADD COLUMN IF NOT EXISTS project_id INTEGER")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_published_posts_project ON published_posts(project_id)")
             cur.execute('''
                 CREATE INDEX IF NOT EXISTS idx_published_posts_date
                 ON published_posts (published_at DESC)
@@ -248,15 +254,17 @@ def get_stats() -> tuple[int, float]:
 
 
 # ── Mini App uchun ─────────────────────────────────────────
-def save_post(url: str | None, title: str, post_text: str, image_url: str | None) -> None:
-    """Kanalga yuborilgan har bir postni saqlaydi (mini app shundan o'qiydi)."""
+def save_post(project_id: int, url: str | None, title: str, post_text: str, image_url: str | None) -> None:
+    """Kanalga yuborilgan har bir postni O'Z LOYIHASIGA bog'lab saqlaydi
+    (mini app shundan o'qiydi) — loyihalar bir-birining postini
+    ko'rmasligi uchun MUHIM."""
     conn = _get_conn()
     try:
         with conn.cursor() as cur:
             cur.execute(
-                '''INSERT INTO published_posts (url, title, post_text, image_url)
-                   VALUES (%s, %s, %s, %s)''',
-                (url, title, post_text, image_url),
+                '''INSERT INTO published_posts (project_id, url, title, post_text, image_url)
+                   VALUES (%s, %s, %s, %s, %s)''',
+                (project_id, url, title, post_text, image_url),
             )
         conn.commit()
     except Exception as e:
@@ -265,17 +273,20 @@ def save_post(url: str | None, title: str, post_text: str, image_url: str | None
         _put_conn(conn)
 
 
-def get_recent_posts(limit: int = 50) -> list[dict]:
-    """Mini app uchun so'nggi postlar ro'yxati (eng yangisi birinchi)."""
+def get_recent_posts(project_id: int, limit: int = 50) -> list[dict]:
+    """Mini app uchun BERILGAN LOYIHANING so'nggi postlari (eng yangisi
+    birinchi). project_id majburiy — aks holda boshqa loyihalarning
+    postlari aralashib ketadi."""
     conn = _get_conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 '''SELECT id, url, title, post_text, image_url, published_at
                    FROM published_posts
+                   WHERE project_id = %s
                    ORDER BY published_at DESC
                    LIMIT %s''',
-                (limit,),
+                (project_id, limit),
             )
             return [dict(row) for row in cur.fetchall()]
     finally:
@@ -759,3 +770,32 @@ def seed_project_if_empty(
         log.info(f'[DB] {len(default_sources)} ta data_source seed qilindi (project={slug}).')
 
     return project
+
+
+def delete_project(project_id: int) -> bool:
+    """Loyihani va unga tegishli BARCHA ma'lumotlarni (workflow config,
+    manbalar, assets, reviews, published_posts, kunlik kvota) butunlay
+    o'chiradi. Boshqa loyihalarga tegmaydi. Loyiha topilmasa False
+    qaytaradi."""
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute('SELECT id FROM projects WHERE id=%s', (project_id,))
+            if not cur.fetchone():
+                return False
+            cur.execute(
+                '''DELETE FROM reviews WHERE asset_id IN
+                   (SELECT id FROM assets WHERE project_id=%s)''',
+                (project_id,),
+            )
+            cur.execute('DELETE FROM assets WHERE project_id=%s', (project_id,))
+            cur.execute('DELETE FROM data_sources WHERE project_id=%s', (project_id,))
+            cur.execute('DELETE FROM workflows WHERE project_id=%s', (project_id,))
+            cur.execute('DELETE FROM published_posts WHERE project_id=%s', (project_id,))
+            cur.execute('DELETE FROM daily_api_usage WHERE project_id=%s', (project_id,))
+            cur.execute('DELETE FROM projects WHERE id=%s', (project_id,))
+        conn.commit()
+        log.info(f'[DB] Loyiha butunlay o\'chirildi (project_id={project_id}).')
+        return True
+    finally:
+        _put_conn(conn)

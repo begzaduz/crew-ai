@@ -467,8 +467,10 @@ class WebhookHandler(BaseHTTPRequestHandler):
             return
 
         if path == '/api/posts':
+            qs = parse_qs(parsed.query)
+            pid = _resolve_project_id({k: v[0] for k, v in qs.items()})
             try:
-                posts = get_recent_posts(50)
+                posts = get_recent_posts(pid, 50)
                 self._json(posts, cors=True)
             except Exception as e:
                 log.error(f'[API] /api/posts xato: {e}')

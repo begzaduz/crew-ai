@@ -131,3 +131,58 @@ class TestAssetLifecycle:
         )
         cfg = database.get_workflow_config(project['id'])
         assert cfg['tone'] == 'admin-changed-tone'
+
+
+class TestDeleteProject:
+    """Loyihani Dashboard'dan butunlay o'chirish — boshqa loyihalarga
+    tegmasligi va bog'liq barcha ma'lumot (assets/sources/config/
+    published_posts/kvota) tozalanishi kerak."""
+
+    def test_delete_removes_project_and_related_data(self, clean_db):
+        p = database.get_or_create_project('del-test', 'Delete Test')
+        database.add_data_source(p['id'], 'https://x.com/rss')
+        database.create_asset(
+            project_id=p['id'], source_url=None, asset_type='manual',
+            title='T', content='C' * 60, score=0,
+        )
+        database.save_post(p['id'], None, 'T', 'C', None)
+        database.increment_api_calls(p['id'], 3)
+
+        assert database.delete_project(p['id']) is True
+        assert database.get_project_by_slug('del-test') is None
+        assert database.get_data_sources(p['id']) == []
+        assert database.get_assets(p['id']) == []
+        assert database.get_recent_posts(p['id']) == []
+        assert database.get_today_api_calls(p['id']) == 0
+
+    def test_delete_nonexistent_returns_false(self, clean_db):
+        assert database.delete_project(999999) is False
+
+    def test_delete_does_not_affect_other_projects(self, clean_db):
+        p1 = database.get_or_create_project('keep-proj', 'Keep')
+        p2 = database.get_or_create_project('drop-proj', 'Drop')
+        database.add_data_source(p1['id'], 'https://keep.com/rss')
+        database.add_data_source(p2['id'], 'https://drop.com/rss')
+
+        database.delete_project(p2['id'])
+
+        assert database.get_project_by_slug('keep-proj') is not None
+        assert len(database.get_data_sources(p1['id'])) == 1
+
+
+class TestPublishedPostsProjectIsolation:
+    """Mini App (/api/posts) endi loyihaga xos — bitta loyihaning
+    tasdiqlangan posti boshqa loyihaning Mini App'ida ko'rinmasligi
+    kerak."""
+
+    def test_get_recent_posts_is_scoped_to_project(self, clean_db):
+        p1 = database.get_or_create_project('feed-a', 'Feed A')
+        p2 = database.get_or_create_project('feed-b', 'Feed B')
+        database.save_post(p1['id'], None, 'A xabari', 'Matn A', None)
+        database.save_post(p2['id'], None, 'B xabari', 'Matn B', None)
+
+        posts_a = database.get_recent_posts(p1['id'])
+        posts_b = database.get_recent_posts(p2['id'])
+
+        assert len(posts_a) == 1 and posts_a[0]['title'] == 'A xabari'
+        assert len(posts_b) == 1 and posts_b[0]['title'] == 'B xabari'

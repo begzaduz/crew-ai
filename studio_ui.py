@@ -217,6 +217,9 @@ STUDIO_HTML = """<!DOCTYPE html>
     <div class="project-switcher">
       <select id="project-select" onchange="switchProject(this.value)"></select>
       <button class="btn btn-ghost" onclick="createNewProject()" title="Yangi loyiha">+</button>
+      <button class="btn btn-danger btn-icon-sm" onclick="deleteCurrentProject()" title="Loyihani o'chirish" aria-label="Loyihani o'chirish">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      </button>
     </div>
     <nav class="groups">
       <div class="group">
@@ -296,7 +299,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     </div>
 
     <div class="view" id="view-published">
-      <div class="page-head"><h1>Published</h1><p>@Inglizfutbol kanaliga chiqqan postlar</p></div>
+      <div class="page-head"><h1>Published</h1><p>Tanlangan loyiha kanaliga chiqqan postlar</p></div>
       <div class="queue-grid" id="queue-published"><div class="empty">Yuklanmoqda...</div></div>
     </div>
 
@@ -1247,6 +1250,37 @@ STUDIO_HTML = """<!DOCTYPE html>
       toast(`Loyiha yaratildi: ${data.name}`);
     } catch (e) {
       toast('Loyiha yaratishda xatolik');
+    }
+  }
+
+  async function deleteCurrentProject() {
+    if (projectsList.length <= 1) { toast("Oxirgi loyihani o'chirib bo'lmaydi"); return; }
+    const p = projectsList.find(p => p.id === currentProjectId);
+    if (!p) return;
+    const typed = await showInputModal({
+      title: `"${p.name}" loyihasini o'chirish`,
+      message: "Bu QAYTARIB BO'LMAYDIGAN amal — barcha postlar, manbalar va sozlamalar o'chib ketadi. Tasdiqlash uchun loyiha nomini yozing:",
+      placeholder: p.name,
+      okLabel: "Butunlay o'chirish",
+      okClass: 'btn-danger',
+    });
+    if (typed !== p.name) { if (typed !== null) toast("Nom mos kelmadi — bekor qilindi"); return; }
+    try {
+      const res = await fetch('/api/studio/projects/delete', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: currentProjectId }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast(data.error || 'Xatolik'); return; }
+      projectsList = projectsList.filter(x => x.id !== currentProjectId);
+      currentProjectId = projectsList[0].id;
+      localStorage.setItem('studiolab_project_id', String(currentProjectId));
+      renderProjectSelect();
+      updateSidebarFoot();
+      toast("Loyiha o'chirildi");
+      switchProject(String(currentProjectId));
+    } catch (e) {
+      toast('Xatolik yuz berdi');
     }
   }
 

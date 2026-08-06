@@ -305,8 +305,10 @@ def approve_asset(data: dict) -> tuple[int, object]:
         notes=data.get('notes', ''),
     )
     # Mini App (/webapp) endi FAQAT tasdiqlangan postlarni ko'rsatadi —
-    # shuning uchun published_posts jadvaliga ham yozamiz.
-    database.save_post(asset.get('source_url'), asset['title'], asset['content'], asset.get('image_url'))
+    # shuning uchun published_posts jadvaliga ham yozamiz. MUHIM: postning
+    # O'Z LOYIHASI (asset['project_id']) bilan bog'lab saqlanadi — aks
+    # holda boshqa loyihaning Mini App'ida bu post ham ko'rinib qolardi.
+    database.save_post(asset['project_id'], asset.get('source_url'), asset['title'], asset['content'], asset.get('image_url'))
     log.info(f'[StudioAPI] Asset #{asset_id} tasdiqlandi va kanalga yuborildi.')
     return 200, {'ok': True}
 
@@ -391,6 +393,23 @@ def create_project(_project_id, data: dict) -> tuple[int, object]:
         return 500, {'error': str(e)}
 
 
+def delete_project(project_id: int, _data: dict) -> tuple[int, object]:
+    """Loyihani va unga tegishli barcha ma'lumotlarni butunlay o'chiradi.
+    Boshqa loyihalarga tegmaydi (database.delete_project() faqat shu
+    project_id bo'yicha filtrlangan qatorlarni o'chiradi)."""
+    if project_id is None:
+        return 400, {'error': 'project_id kerak'}
+    try:
+        ok = database.delete_project(int(project_id))
+        if not ok:
+            return 404, {'error': 'loyiha topilmadi'}
+        log.info(f'[StudioAPI] Loyiha o\'chirildi: {project_id}')
+        return 200, {'ok': True}
+    except Exception as e:
+        log.error(f'[StudioAPI] delete_project: {e}')
+        return 500, {'error': str(e)}
+
+
 def reset_api_budget(project_id: int, _data: dict) -> tuple[int, object]:
     """Loyihaning BUGUNGI ichki API hisoblagichini nolga tushiradi.
     Sinov/debug paytida ichki kunlik limit (DAILY_POST_BUDGET) tugab
@@ -418,6 +437,7 @@ GET_ROUTES = {
 # POST: (project_id, body_dict) -> (status, payload)
 POST_ROUTES = {
     '/api/studio/projects':         create_project,
+    '/api/studio/projects/delete':  lambda project_id, body: delete_project(project_id, body),
     '/api/studio/sources':          lambda project_id, body: add_source(project_id, body),
     '/api/studio/sources/update':   lambda project_id, body: update_source_meta(body),
     '/api/studio/sources/toggle':   lambda project_id, body: toggle_source(body),
