@@ -107,3 +107,23 @@ class TestUpdateConfigValidation:
             'telegram_channel_id': '@Test',
         })
         assert status == 200
+
+
+class TestAutoPublishConfig:
+    def test_auto_publish_coerced_to_bool(self, clean_db):
+        project = database.get_or_create_project('auto-pub-1', 'Auto Publish 1')
+        status, payload = studio_api.update_config(project['id'], {'auto_publish': True})
+        assert status == 200
+        assert database.get_workflow_config(project['id'])['auto_publish'] is True
+
+    def test_auto_publish_defaults_false_in_stats(self, clean_db):
+        project = database.get_or_create_project('auto-pub-2', 'Auto Publish 2')
+        status, payload = studio_api.get_dashboard_stats(project['id'])
+        assert status == 200
+        assert payload['auto_publish'] is False
+
+    def test_auto_publish_reflected_in_stats_after_enabling(self, clean_db):
+        project = database.get_or_create_project('auto-pub-3', 'Auto Publish 3')
+        studio_api.update_config(project['id'], {'auto_publish': True})
+        status, payload = studio_api.get_dashboard_stats(project['id'])
+        assert payload['auto_publish'] is True

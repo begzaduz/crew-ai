@@ -194,6 +194,17 @@ STUDIO_HTML = """<!DOCTYPE html>
   .term-row{ display:grid; grid-template-columns:1fr 1fr auto; gap:7px; margin-bottom:5px; }
   .field-label{ font-size:10px; color:var(--text-faint); margin-bottom:3px; display:block; }
 
+  .toggle-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 0; }
+  .toggle-row .toggle-copy{ flex:1; min-width:0; }
+  .toggle-row .toggle-title{ font-size:12.5px; font-weight:600; color:var(--text); }
+  .toggle-row .toggle-desc{ font-size:10.5px; color:var(--text-faint); margin-top:2px; line-height:1.4; }
+  .switch{ position:relative; display:inline-block; width:38px; height:22px; flex-shrink:0; }
+  .switch input{ opacity:0; width:0; height:0; }
+  .switch-slider{ position:absolute; cursor:pointer; inset:0; background:var(--surface-2); border:1px solid var(--border); border-radius:11px; transition:.15s; }
+  .switch-slider::before{ content:""; position:absolute; width:16px; height:16px; left:2px; top:2px; background:var(--text-faint); border-radius:50%; transition:.15s; }
+  .switch input:checked + .switch-slider{ background:rgba(255,138,61,.18); border-color:var(--gold); }
+  .switch input:checked + .switch-slider::before{ transform:translateX(16px); background:var(--gold); }
+
   .rightpanel{ background:var(--navy-deep); border-left:1px solid var(--border); padding:16px 16px; overflow-y:auto; }
   .rp-empty{ height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; color:var(--text-faint); font-size:12px; gap:8px; }
   .rp-title{ font-size:13.5px; font-weight:700; margin-bottom:2px; font-family:var(--font-display); }
@@ -273,7 +284,8 @@ STUDIO_HTML = """<!DOCTYPE html>
     <div class="view active" id="view-dashboard">
       <div class="page-head" style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
         <div><h1>Dashboard</h1><p id="dashboard-subtitle">AI-Powered Creative Operations</p></div>
-        <div id="status-badge" style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-faint); white-space:nowrap; padding-top:2px;">
+        <div id="status-badge" style="display:flex; align-items:center; gap:8px; font-size:11px; color:var(--text-faint); white-space:nowrap; padding-top:2px;">
+          <span class="tag draft" id="auto-publish-badge" style="display:none">AVTO YUBORISH</span>
           <span class="status-dot" id="status-dot-2"></span><span id="status-badge-text">—</span>
         </div>
       </div>
@@ -362,7 +374,17 @@ STUDIO_HTML = """<!DOCTYPE html>
           <span class="field-label">Soha tavsifi (AI shu sohaning tahlilchisi/muharriri sifatida yozadi)</span>
           <input type="text" id="domain-description" placeholder="masalan: Premier League football" style="margin-bottom:10px">
           <span class="field-label">Telegram kanali (haqiqiy yuborish manzili — masalan @KanalNomi yoki -100...)</span>
-          <input type="text" id="telegram-channel-id" placeholder="@Inglizfutbol" style="margin-bottom:10px">
+          <input type="text" id="telegram-channel-id" placeholder="@Inglizfutbol" style="margin-bottom:6px">
+          <div class="toggle-row" style="border-bottom:1px solid var(--border); margin-bottom:10px">
+            <div class="toggle-copy">
+              <div class="toggle-title">Avtomatik yuborish</div>
+              <div class="toggle-desc">Yoqilgan bo'lsa, AI yaratgan post Review Queue'da kutmasdan DARHOL kanalga yuboriladi (tekshirish yo'q). O'chirilgan bo'lsa — hozirgidek, faqat qo'lda tasdiqlagandan keyin.</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="auto-publish-toggle" onchange="saveChannelSettings()">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
           <span class="field-label">Kanal yorlig'i (postning oxiriga qo'shiladigan matn)</span>
           <input type="text" id="channel-tag" placeholder="@Inglizfutbol" style="margin-bottom:10px">
           <span class="field-label">Uslub (tone)</span>
@@ -638,6 +660,8 @@ STUDIO_HTML = """<!DOCTYPE html>
       document.getElementById('nav-count-published').textContent = s.published_total ?? 0;
       document.getElementById('nav-count-rejected').textContent = s.rejected_total ?? 0;
       document.getElementById('nav-count-sources').textContent = s.total_sources ?? 0;
+      const autoBadge = document.getElementById('auto-publish-badge');
+      if (autoBadge) autoBadge.style.display = s.auto_publish ? 'inline-block' : 'none';
 
       const dot = document.getElementById('status-dot');
       const dot2 = document.getElementById('status-dot-2');
@@ -1101,7 +1125,8 @@ STUDIO_HTML = """<!DOCTYPE html>
     const telegram_channel_id = document.getElementById('telegram-channel-id').value.trim();
     const tone = document.getElementById('tone-field').value.trim();
     const gemini_api_key = document.getElementById('gemini-api-key').value.trim();
-    const res = await apiPost('/api/studio/config', { domain_description, channel_tag, telegram_channel_id, tone, gemini_api_key });
+    const auto_publish = document.getElementById('auto-publish-toggle').checked;
+    const res = await apiPost('/api/studio/config', { domain_description, channel_tag, telegram_channel_id, tone, gemini_api_key, auto_publish });
     const data = await res.json();
     if (!res.ok) { toast(data.error || 'Xatolik'); return; }
     toast('Saqlandi');
@@ -1122,6 +1147,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       document.getElementById('channel-tag').value = cfg.channel_tag || '';
       document.getElementById('telegram-channel-id').value = cfg.telegram_channel_id || '';
       document.getElementById('tone-field').value = cfg.tone || '';
+      document.getElementById('auto-publish-toggle').checked = !!cfg.auto_publish;
       const keyInput = document.getElementById('gemini-api-key');
       keyInput.value = '';
       keyInput.placeholder = cfg.gemini_api_key_set

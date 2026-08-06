@@ -129,7 +129,7 @@ def get_config(project_id: int) -> tuple[int, object]:
 _ALLOWED_CONFIG_KEYS = {
     'terminology', 'nicknames', 'channel_tag', 'tone',
     'domain_description', 'content_types', 'jargon', 'emoji_legend',
-    'telegram_channel_id', 'prompts', 'gemini_api_key',
+    'telegram_channel_id', 'prompts', 'gemini_api_key', 'auto_publish',
 }
 _ALLOWED_PROMPT_KEYS = {'researcher', 'writer', 'editor'}
 
@@ -152,6 +152,10 @@ def update_config(project_id: int, data: dict) -> tuple[int, object]:
         return 400, {'error': "domain_description matn bo'lishi kerak"}
     if 'telegram_channel_id' in patch and not isinstance(patch['telegram_channel_id'], str):
         return 400, {'error': "telegram_channel_id matn bo'lishi kerak (masalan @KanalNomi)"}
+    if 'auto_publish' in patch:
+        # Frontend checkbox true/false yuboradi, lekin xavfsizlik uchun
+        # istalgan "haqiqiy" qiymatni ham bool'ga aylantiramiz.
+        patch['auto_publish'] = bool(patch['auto_publish'])
     if 'gemini_api_key' in patch:
         if not isinstance(patch['gemini_api_key'], str):
             return 400, {'error': "gemini_api_key matn bo'lishi kerak"}
@@ -222,6 +226,7 @@ def get_dashboard_stats(project_id: int) -> tuple[int, object]:
             project_status = 'active' if age_seconds <= _STATUS_STALE_THRESHOLD_SECONDS else 'error'
 
         api_calls_used = database.get_today_api_calls(project_id)
+        auto_publish = bool(database.get_workflow_config(project_id).get('auto_publish'))
 
         return 200, {
             'pending_review': len(drafts),
@@ -230,6 +235,7 @@ def get_dashboard_stats(project_id: int) -> tuple[int, object]:
             'posts_today': posts_today,
             'active_sources': sum(1 for s in sources if s.get('active')),
             'total_sources': len(sources),
+            'auto_publish': auto_publish,
             'project_status': project_status,
             'last_run_at': last_run_at,
             'api_calls_used_today': api_calls_used,

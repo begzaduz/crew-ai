@@ -126,6 +126,25 @@ def _resolve_project_id(source: dict) -> int:
     return PROJECT_ID
 
 
+# ── Avtomatik yuborish (auto_publish) ─────────────────────
+def _maybe_auto_publish(project_id: int, asset: dict) -> None:
+    """Agar loyihada Dashboard'dan 'Avtomatik yuborish' yoqilgan bo'lsa
+    (workflows.config['auto_publish'] == True), yangi yaratilgan postni
+    Review Queue'da odam tasdiqlashini kutmasdan DARHOL kanalga yuboradi.
+    Yuborish logikasi studio_api.approve_asset() orqali — shu bilan
+    Telegram'ga chiqish, 'published' deb belgilash va published_posts'ga
+    yozish har doim BITTA joydan (qo'lda tasdiqlash bilan bir xil yo'ldan)
+    o'tadi, ikki xil kod yo'li ushlab turilmaydi."""
+    config = database.get_workflow_config(project_id)
+    if not config.get('auto_publish'):
+        return
+    status, payload = studio_api.approve_asset({'id': asset['id'], 'reviewer': 'auto_publish'})
+    if status == 200:
+        log.info(f"[Auto] (loyiha={project_id}) 'Avtomatik yuborish' yoqilgan — asset #{asset['id']} darhol kanalga ketdi.")
+    else:
+        log.error(f"[Auto] (loyiha={project_id}) Avtomatik yuborishda xato (asset #{asset['id']}): {payload}")
+
+
 # ── Admin tekshiruvi ──────────────────────────────────────
 def is_admin(chat_id: int) -> bool:
     if not ADMIN_IDS:
@@ -202,12 +221,12 @@ def auto_news_post(project_id: int) -> bool:
             image_url = fetch_article_image(article['url']) if article.get('url') else None
             log.info(f'[Auto] Rasm: {image_url[:60] if image_url else "yoq"}')
 
-            # MUHIM: bu yerda kanalga TO'G'RIDAN-TO'G'RI yuborilmaydi.
             # Post 'assets' jadvaliga status='draft' bilan yoziladi —
             # Dashboard'dagi Review Queue'da admin uni ko'radi, kerak
-            # bo'lsa tahrirlaydi, va faqat TASDIQLAGANDAN keyin
-            # (studio_api.approve_asset) kanalga jo'naydi.
-            database.create_asset(
+            # bo'lsa tahrirlaydi, va TASDIQLAGANDAN keyin (yoki loyihada
+            # 'Avtomatik yuborish' yoqilgan bo'lsa — darhol, quyida)
+            # kanalga jo'naydi.
+            asset = database.create_asset(
                 project_id=project_id,
                 source_url=article['url'],
                 asset_type='rss_news',
@@ -216,6 +235,7 @@ def auto_news_post(project_id: int) -> bool:
                 score=article['score'],
                 image_url=image_url,
             )
+            _maybe_auto_publish(project_id, asset)
             mark_processed(article['url'], article['title'], article['score'])
             log.info(f'[Auto] (loyiha={project_id}) ✅ Review Queue-ga qo\'shildi: {article["title"][:60]}')
             return True
@@ -314,12 +334,14 @@ def handle_update(update: dict) -> None:
                 article = {'title': text, 'description': '', 'url': None, 'score': 100}
                 post = generate_post(article, PROJECT_ID)
                 increment_api_calls(PROJECT_ID, CALLS_PER_POST)
-                # MUHIM: bu yerda kanalga yubormaymiz — Review Queue'ga
-                # qo'shamiz, tasdiqlash faqat Dashboard'da bo'ladi.
-                database.create_asset(
+                # MUHIM: bu yerda kanalga to'g'ridan-to'g'ri yubormaymiz —
+                # Review Queue'ga qo'shamiz; agar 'Avtomatik yuborish'
+                # yoqilgan bo'lsa, quyida darhol kanalga ham ketadi.
+                asset = database.create_asset(
                     project_id=PROJECT_ID, source_url=None, asset_type='manual',
                     title=text[:80], content=post, score=100, image_url=None,
                 )
+                _maybe_auto_publish(PROJECT_ID, asset)
                 tg_send(chat_id, f'✅ Review Queue-ga qo\'shildi. Tasdiqlash uchun Dashboard: /studio\n\n{post}')
             except Exception as e:
                 increment_api_calls(PROJECT_ID, CALLS_PER_POST)
