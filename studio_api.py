@@ -252,9 +252,28 @@ def get_dashboard_stats(project_id: int) -> tuple[int, object]:
 # funksiyalar Dashboard orqali ko'rish/tahrirlash/tasdiqlash/rad etish
 # uchun. FAQAT approve_asset() haqiqatan Telegram kanaliga yuboradi.
 def list_assets(project_id: int, query: dict) -> tuple[int, object]:
+    """MUHIM: bu yerda content HAR DOIM sanitize_telegram_html() orqali
+    o'tkaziladi — DB'dagi xom holatidan qat'i nazar. generate_post()
+    pipeline'i allaqachon tozalab saqlaydi, LEKIN bu fix'dan OLDIN
+    yaratilgan eski draft'larda xom '<br>' qolib ketishi mumkin edi, va
+    server startup'dagi bir martalik migratsiya (resanitize_draft_assets)
+    hali ishlamagan yoki keyinroq yaratilgan holatlar ham bo'lishi mumkin.
+    Shu tozalash har o'qishda qo'llanadi (arzon, sof funksiya) — agar
+    farq topilsa, DB'ga ham darhol yozib qo'yiladi (self-heal), shunda
+    bu asset boshqa hech qachon xom holatda ko'rinmaydi."""
     status = (query or {}).get('status') or 'draft'
     try:
-        return 200, database.get_assets(project_id, status=status)
+        assets = database.get_assets(project_id, status=status)
+        for a in assets:
+            raw = a.get('content') or ''
+            cleaned = telegram_utils.sanitize_telegram_html(raw)
+            if cleaned != raw:
+                a['content'] = cleaned
+                try:
+                    database.update_asset_content(a['id'], cleaned, a.get('title'))
+                except Exception as e:
+                    log.warning(f'[StudioAPI] list_assets: self-heal xato (asset={a["id"]}): {e}')
+        return 200, assets
     except Exception as e:
         log.error(f'[StudioAPI] list_assets: {e}')
         return 500, {'error': str(e)}

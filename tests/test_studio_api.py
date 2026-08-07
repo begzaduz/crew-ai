@@ -86,7 +86,38 @@ class TestApproveAssetChannelRouting:
         assert status == 400
 
 
-class TestUpdateConfigValidation:
+class TestListAssetsSelfHeal:
+    """MUHIM: sanitize_telegram_html() qo'shilishidan OLDIN yaratilgan
+    eski draft'larda xom '<br>' teglari qolib ketgan bo'lishi mumkin edi.
+    list_assets() endi HAR O'QISHDA buni tozalaydi va DB'ga ham qaytarib
+    yozadi — Dashboard'da boshqa hech qachon xom teg ko'rinmasligi kerak."""
+
+    def test_raw_br_tag_is_cleaned_on_read(self, clean_db):
+        project = database.get_or_create_project('br-heal-test', 'Br Heal Test')
+        asset = database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title='Test', content='Sarlavha matni<br><br>Ikkinchi paragraf matni.',
+            score=0,
+        )
+        status, payload = studio_api.list_assets(project['id'], {'status': 'draft'})
+        assert status == 200
+        cleaned = next(a for a in payload if a['id'] == asset['id'])
+        assert '<br>' not in cleaned['content']
+        assert 'Ikkinchi paragraf' in cleaned['content']
+
+        persisted = database.get_asset(asset['id'])
+        assert '<br>' not in persisted['content']
+
+    def test_already_clean_content_is_left_untouched(self, clean_db):
+        project = database.get_or_create_project('br-heal-test2', 'Br Heal Test 2')
+        asset = database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title='Test', content='Toza matn, hech qanday teg yoq.',
+            score=0,
+        )
+        status, payload = studio_api.list_assets(project['id'], {'status': 'draft'})
+        cleaned = next(a for a in payload if a['id'] == asset['id'])
+        assert cleaned['content'] == 'Toza matn, hech qanday teg yoq.'
     def test_rejects_unknown_keys_only(self, clean_db):
         project = database.get_or_create_project('cfg-test', 'Config Test')
         status, payload = studio_api.update_config(project['id'], {'totally_unknown_key': 'x'})

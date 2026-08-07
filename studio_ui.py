@@ -64,6 +64,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     .sidebar.open{ transform:translateX(0); }
 
     main{ padding:14px 12px 60px; }
+    .mobile-only-inline{ display:inline-block; flex-shrink:0; }
     .stat-strip{ flex-wrap:wrap; }
     .stat-item{ flex:0 0 50%; border-top:1px solid var(--border); }
     .stat-item:nth-child(-n+2){ border-top:none; }
@@ -149,8 +150,7 @@ STUDIO_HTML = """<!DOCTYPE html>
   .q-card.selected{ background:var(--surface-2); box-shadow:inset 2px 0 0 var(--gold); }
   .q-card-main{ flex:1; min-width:0; }
 
-  .queue-layout{ display:flex; gap:16px; align-items:flex-start; }
-  .queue-detail{ flex:1; min-width:0; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:26px 30px; min-height:540px; }
+  .queue-detail{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:26px 30px; min-height:540px; }
   .qd-empty{ height:490px; display:flex; align-items:center; justify-content:center; text-align:center; color:var(--text-faint); font-size:13px; }
   .qd-title{ font-size:19.5px; font-weight:700; line-height:1.35; margin-bottom:8px; font-family:var(--font-display); }
   .qd-meta{ font-size:11.5px; color:var(--text-faint); margin-bottom:20px; }
@@ -161,9 +161,8 @@ STUDIO_HTML = """<!DOCTYPE html>
   .qd-actions{ display:flex; gap:10px; margin-top:20px; }
   .qd-actions .btn{ padding:10px 22px; font-size:12.5px; }
 
-  .queue-sidelist{ width:300px; flex-shrink:0; }
-  .queue-sidelist-label{ font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-faint); font-weight:600; font-family:var(--font-mono); padding:0 2px 8px; }
-  .mini-list{ display:flex; flex-direction:column; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+  .rp-pending-label{ font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-faint); font-weight:600; font-family:var(--font-mono); padding:0 2px 8px; }
+  .mini-list{ display:flex; flex-direction:column; background:var(--navy); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
   .mini-card{ display:flex; flex-direction:column; gap:2px; padding:9px 11px; cursor:pointer; border-top:1px solid var(--border); }
   .mini-card:first-child{ border-top:none; }
   .mini-card:hover{ background:var(--surface-2); }
@@ -171,10 +170,7 @@ STUDIO_HTML = """<!DOCTYPE html>
   .mini-card .mc-title{ font-size:11.5px; font-weight:600; line-height:1.32; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .mini-card .mc-meta{ font-size:9.5px; color:var(--text-faint); margin-top:1px; }
 
-  @media (max-width: 1100px){
-    .queue-layout{ flex-direction:column; }
-    .queue-sidelist{ width:100%; }
-  }
+  .mobile-only-inline{ display:none; }
   .q-title{ font-size:12.5px; font-weight:600; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .q-meta{ display:flex; gap:7px; font-size:10px; color:var(--text-faint); margin-top:2px; flex-wrap:wrap; }
   .tag{ display:inline-block; font-size:9.5px; padding:2px 6px; border-radius:var(--radius-sm); font-weight:600; letter-spacing:.03em; flex-shrink:0; }
@@ -356,15 +352,12 @@ STUDIO_HTML = """<!DOCTYPE html>
     </div>
 
     <div class="view" id="view-queue">
-      <div class="page-head"><h1>Review Queue</h1><p>Tasdiqlashni kutayotgan postlar</p></div>
-      <div class="queue-layout">
-        <div class="queue-detail" id="queue-detail">
-          <div class="qd-empty">Postni o'ngdagi ro'yxatdan tanlang</div>
-        </div>
-        <div class="queue-sidelist">
-          <div class="queue-sidelist-label">Tasdiqlash kutmoqda</div>
-          <div class="mini-list" id="queue-mini-list"><div class="empty">Yuklanmoqda...</div></div>
-        </div>
+      <div class="page-head" style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
+        <div><h1>Review Queue</h1><p>Tasdiqlashni kutayotgan postlar</p></div>
+        <button class="btn btn-ghost mobile-only-inline" onclick="openQueueListMobile()">Ro'yxat</button>
+      </div>
+      <div class="queue-detail" id="queue-detail">
+        <div class="qd-empty">Postni tanlang — tafsilotlar shu yerda ko'rinadi</div>
       </div>
     </div>
 
@@ -660,9 +653,14 @@ STUDIO_HTML = """<!DOCTYPE html>
     const titleEl = document.getElementById('mobile-topbar-title');
     if (titleEl) titleEl.textContent = VIEW_TITLES[name] || 'Studio Lab';
     closeMobileSidebar();
+    if (name === 'queue') {
+      viewLoaded['queue'] = true;
+      renderQueuePendingList();
+    } else if (rightpanelMode === 'queue-list') {
+      closeRightPanel();
+    }
     if (!viewLoaded[name]) {
       viewLoaded[name] = true;
-      if (name === 'queue') loadQueueMiniList();
       if (name === 'published') loadAssets('published', 'queue-published');
       if (name === 'rejected') loadAssets('rejected', 'queue-rejected');
       if (name === 'sources') loadSources();
@@ -809,19 +807,24 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   let selectedQueueId = null;
 
+  let rightpanelMode = 'empty';
+
   function resetQueueDetail() {
     selectedQueueId = null;
-    document.getElementById('queue-detail').innerHTML = '<div class="qd-empty">Postni o\\'ngdagi ro\\'yxatdan tanlang</div>';
+    document.getElementById('queue-detail').innerHTML = '<div class="qd-empty">Postni tanlang — tafsilotlar shu yerda ko\\'rinadi</div>';
   }
 
-  async function loadQueueMiniList() {
-    const el = document.getElementById('queue-mini-list');
+  async function renderQueuePendingList() {
+    rightpanelMode = 'queue-list';
+    const rp = document.getElementById('rightpanel');
     try {
       const res = await apiGet('/api/studio/assets?status=draft');
       const items = await res.json();
       items.forEach(a => assetCache[a.id] = a);
       if (!items.length) {
-        el.innerHTML = `
+        rp.innerHTML = `
+          <button class="rp-close-mobile" onclick="closeMobileRightpanel()">← Orqaga</button>
+          <div class="rp-pending-label">Tasdiqlash kutmoqda</div>
           <div class="empty">
             <div style="margin-bottom:10px">Hozircha Review Queue bo'sh.</div>
             <button class="btn btn-gold" onclick="switchView('studio')">+ Yangi post yaratish</button>
@@ -830,20 +833,35 @@ STUDIO_HTML = """<!DOCTYPE html>
         resetQueueDetail();
         return;
       }
-      el.innerHTML = items.map(a => `
-        <div class="mini-card" data-id="${a.id}" onclick="openQueueAsset(${a.id})">
-          <div class="mc-title">${escapeHtml((a.title || '').slice(0, 70))}</div>
-          <div class="mc-meta">${fmtTime(a.created_at)}${a.score ? ' · ball ' + a.score : ''}</div>
+      rp.innerHTML = `
+        <button class="rp-close-mobile" onclick="closeMobileRightpanel()">← Orqaga</button>
+        <div class="rp-pending-label">Tasdiqlash kutmoqda</div>
+        <div class="mini-list" id="queue-mini-list">
+          ${items.map(a => `
+            <div class="mini-card" data-id="${a.id}" onclick="openQueueAsset(${a.id})">
+              <div class="mc-title">${escapeHtml((a.title || '').slice(0, 70))}</div>
+              <div class="mc-meta">${fmtTime(a.created_at)}${a.score ? ' · ball ' + a.score : ''}</div>
+            </div>
+          `).join('')}
         </div>
-      `).join('');
+      `;
       if (selectedQueueId && items.some(a => a.id === selectedQueueId)) {
         document.querySelectorAll('.mini-card').forEach(c => c.classList.toggle('selected', Number(c.dataset.id) === selectedQueueId));
       } else {
         resetQueueDetail();
       }
     } catch (e) {
-      el.innerHTML = '<div class="empty">Xatolik yuz berdi.</div>';
+      rp.innerHTML = '<div class="empty">Xatolik yuz berdi.</div>';
     }
+  }
+
+  function openQueueListMobile() {
+    renderQueuePendingList();
+    document.getElementById('rightpanel').classList.add('open');
+  }
+
+  function closeMobileRightpanel() {
+    document.getElementById('rightpanel').classList.remove('open');
   }
 
   function openQueueAsset(id) {
@@ -857,15 +875,16 @@ STUDIO_HTML = """<!DOCTYPE html>
       ${a.image_url ? `<div class="qd-img" style="background-image:url('${escapeAttr(a.image_url)}')"></div>` : ''}
       <textarea id="qd-content" class="qd-textarea">${escapeHtml(a.content || '')}</textarea>
       <div class="qd-actions">
-        <button class="btn btn-green" onclick="approveAsset(${a.id})">Tasdiqlash va yuborish</button>
-        <button class="btn btn-danger" onclick="rejectAsset(${a.id})">Rad etish</button>
+        <button class="btn btn-green" onclick="approveAsset(${a.id})">Tasdiqlash</button>
+        <button class="btn btn-danger" onclick="rejectAsset(${a.id})">Rad</button>
       </div>
     `;
+    closeMobileRightpanel();
   }
 
   function refreshCurrentLists() {
     loadStats();
-    if (viewLoaded['queue']) loadQueueMiniList();
+    if (viewLoaded['queue']) renderQueuePendingList();
     if (viewLoaded['published']) loadAssets('published', 'queue-published');
     if (viewLoaded['rejected']) loadAssets('rejected', 'queue-rejected');
     loadActivityFeed();
@@ -874,6 +893,7 @@ STUDIO_HTML = """<!DOCTYPE html>
   function openAsset(id) {
     const a = assetCache[id];
     if (!a) return;
+    rightpanelMode = 'asset-detail';
     document.querySelectorAll('.q-card').forEach(c => c.classList.toggle('selected', Number(c.dataset.id) === id));
     const rp = document.getElementById('rightpanel');
     rp.innerHTML = `
@@ -892,6 +912,7 @@ STUDIO_HTML = """<!DOCTYPE html>
   }
 
   function closeRightPanel() {
+    rightpanelMode = 'empty';
     document.getElementById('rightpanel').innerHTML = '<div class="rp-empty"><div>Postni tanlang — tafsilotlar shu yerda ko\\'rinadi</div></div>';
     document.getElementById('rightpanel').classList.remove('open');
     document.querySelectorAll('.q-card').forEach(c => c.classList.remove('selected'));
@@ -914,7 +935,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     const ok = await showConfirmModal({
       title: 'Kanalga yuborish',
       message: 'Bu post kanalga yuboriladi. Tasdiqlaysizmi?',
-      okLabel: 'Tasdiqlash va yuborish',
+      okLabel: 'Tasdiqlash',
       okClass: 'btn-green',
     });
     if (!ok) return;
@@ -941,7 +962,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     const ok = await showConfirmModal({
       title: 'Postni rad etish',
       message: 'Bu postni rad etasizmi?',
-      okLabel: 'Rad etish',
+      okLabel: 'Rad',
       okClass: 'btn-danger',
     });
     if (!ok) return;
