@@ -99,6 +99,8 @@ STUDIO_HTML = """<!DOCTYPE html>
   .nav-item.active{ background:var(--surface); color:var(--gold); border-left-color:var(--gold); }
   .nav-item .count{ margin-left:auto; font-size:10px; color:var(--text-faint); background:var(--surface-2); padding:1px 6px; border-radius:var(--radius-sm); }
   .nav-item.active .count{ color:var(--gold); }
+  .nav-item.disabled{ opacity:.4; cursor:default; }
+  .nav-item.disabled:hover{ background:none; color:var(--text-dim); }
   .sidebar-foot{ padding:10px 14px; border-top:1px solid var(--border); font-size:10.5px; color:var(--text-faint); display:flex; align-items:center; gap:7px; }
   .status-dot{ width:6px; height:6px; border-radius:50%; background:var(--green); flex-shrink:0; }
   .status-dot.error{ background:var(--red); }
@@ -254,25 +256,29 @@ STUDIO_HTML = """<!DOCTYPE html>
         <div class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')">Dashboard</div>
       </div>
       <div class="group">
-        <div class="group-label">Content</div>
+        <div class="group-label">Create</div>
+        <div class="nav-item" data-view="studio" onclick="switchView('studio')">Text Post</div>
+        <div class="nav-item disabled" title="Tez orada">Instagram Post</div>
+        <div class="nav-item disabled" title="Tez orada">Reel</div>
+        <div class="nav-item disabled" title="Tez orada">Article</div>
+        <div class="nav-item disabled" title="Tez orada">Banner</div>
+      </div>
+      <div class="group">
+        <div class="group-label">Automation</div>
+        <div class="nav-item" data-view="sources" onclick="switchView('sources')">RSS &rarr; Post <span class="count" id="nav-count-sources">0</span></div>
+        <div class="nav-item disabled" title="Tez orada">X &rarr; Telegram</div>
+        <div class="nav-item disabled" title="Tez orada">Scheduled Jobs</div>
+      </div>
+      <div class="group">
+        <div class="group-label">Deliveries</div>
         <div class="nav-item" data-view="queue" onclick="switchView('queue')">Review Queue <span class="count" id="nav-count-draft">0</span></div>
         <div class="nav-item" data-view="published" onclick="switchView('published')">Published <span class="count" id="nav-count-published">0</span></div>
         <div class="nav-item" data-view="rejected" onclick="switchView('rejected')">Rejected <span class="count" id="nav-count-rejected">0</span></div>
+        <div class="nav-item disabled" title="Tez orada">Archive</div>
       </div>
       <div class="group">
-        <div class="group-label">Sources</div>
-        <div class="nav-item" data-view="sources" onclick="switchView('sources')">RSS <span class="count" id="nav-count-sources">0</span></div>
-      </div>
-      <div class="group">
-        <div class="group-label">Knowledge Base</div>
-        <div class="nav-item" data-view="kb" onclick="switchView('kb')">Terminology &amp; Rules</div>
-      </div>
-      <div class="group">
-        <div class="group-label">Create</div>
-        <div class="nav-item" data-view="studio" onclick="switchView('studio')">AI Content Studio</div>
-      </div>
-      <div class="group">
-        <div class="group-label">Advanced</div>
+        <div class="group-label">Knowledge</div>
+        <div class="nav-item" data-view="kb" onclick="switchView('kb')">Brand Rules &amp; Terminology</div>
         <div class="nav-item" data-view="prompts" onclick="switchView('prompts')">Prompts</div>
       </div>
     </nav>
