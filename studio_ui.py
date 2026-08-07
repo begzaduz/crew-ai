@@ -640,6 +640,7 @@ STUDIO_HTML = """<!DOCTYPE html>
   }
 
   const viewLoaded = {};
+  let currentView = 'dashboard';
   const VIEW_TITLES = {
     dashboard: 'Dashboard', queue: 'Review Queue', published: 'Published',
     rejected: 'Rejected', sources: 'RSS Sources', kb: 'Knowledge Base',
@@ -647,6 +648,7 @@ STUDIO_HTML = """<!DOCTYPE html>
   };
 
   function switchView(name) {
+    currentView = name;
     document.querySelectorAll('.nav-item[data-view]').forEach(n => n.classList.toggle('active', n.dataset.view === name));
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.getElementById('view-' + name).classList.add('active');
@@ -654,7 +656,6 @@ STUDIO_HTML = """<!DOCTYPE html>
     if (titleEl) titleEl.textContent = VIEW_TITLES[name] || 'Studio Lab';
     closeMobileSidebar();
     if (name === 'queue') {
-      viewLoaded['queue'] = true;
       renderQueuePendingList();
     } else if (rightpanelMode === 'queue-list') {
       closeRightPanel();
@@ -884,7 +885,7 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   function refreshCurrentLists() {
     loadStats();
-    if (viewLoaded['queue']) renderQueuePendingList();
+    if (currentView === 'queue') renderQueuePendingList();
     if (viewLoaded['published']) loadAssets('published', 'queue-published');
     if (viewLoaded['rejected']) loadAssets('rejected', 'queue-rejected');
     loadActivityFeed();
@@ -996,7 +997,6 @@ STUDIO_HTML = """<!DOCTYPE html>
       if (!res.ok) { toast(data.error || 'Xatolik'); return; }
       textEl.value = '';
       toast('Review Queue-ga qo\\'shildi');
-      viewLoaded['queue'] = false;
       switchView('queue');
       refreshCurrentLists();
     } catch (e) {
