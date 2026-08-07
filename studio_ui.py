@@ -148,6 +148,33 @@ STUDIO_HTML = """<!DOCTYPE html>
   .q-card:hover{ background:var(--surface-2); }
   .q-card.selected{ background:var(--surface-2); box-shadow:inset 2px 0 0 var(--gold); }
   .q-card-main{ flex:1; min-width:0; }
+
+  .queue-layout{ display:flex; gap:16px; align-items:flex-start; }
+  .queue-detail{ flex:1; min-width:0; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:26px 30px; min-height:540px; }
+  .qd-empty{ height:490px; display:flex; align-items:center; justify-content:center; text-align:center; color:var(--text-faint); font-size:13px; }
+  .qd-title{ font-size:19.5px; font-weight:700; line-height:1.35; margin-bottom:8px; font-family:var(--font-display); }
+  .qd-meta{ font-size:11.5px; color:var(--text-faint); margin-bottom:20px; }
+  .qd-img{ width:100%; max-width:560px; height:280px; border-radius:var(--radius); background:var(--surface-2) center/cover no-repeat; border:1px solid var(--border); margin-bottom:20px; }
+  .qd-textarea{ display:block; width:100%; min-height:340px; background:var(--navy-deep); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:13.5px; line-height:1.75; padding:18px 20px; font-family:inherit; resize:vertical; }
+  .qd-textarea:focus{ outline:none; border-color:var(--gold); }
+  .qd-textarea[readonly]{ color:var(--text-dim); }
+  .qd-actions{ display:flex; gap:10px; margin-top:20px; }
+  .qd-actions .btn{ padding:10px 22px; font-size:12.5px; }
+
+  .queue-sidelist{ width:300px; flex-shrink:0; }
+  .queue-sidelist-label{ font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-faint); font-weight:600; font-family:var(--font-mono); padding:0 2px 8px; }
+  .mini-list{ display:flex; flex-direction:column; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+  .mini-card{ display:flex; flex-direction:column; gap:2px; padding:9px 11px; cursor:pointer; border-top:1px solid var(--border); }
+  .mini-card:first-child{ border-top:none; }
+  .mini-card:hover{ background:var(--surface-2); }
+  .mini-card.selected{ background:var(--surface-2); box-shadow:inset 2px 0 0 var(--gold); }
+  .mini-card .mc-title{ font-size:11.5px; font-weight:600; line-height:1.32; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mini-card .mc-meta{ font-size:9.5px; color:var(--text-faint); margin-top:1px; }
+
+  @media (max-width: 1100px){
+    .queue-layout{ flex-direction:column; }
+    .queue-sidelist{ width:100%; }
+  }
   .q-title{ font-size:12.5px; font-weight:600; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .q-meta{ display:flex; gap:7px; font-size:10px; color:var(--text-faint); margin-top:2px; flex-wrap:wrap; }
   .tag{ display:inline-block; font-size:9.5px; padding:2px 6px; border-radius:var(--radius-sm); font-weight:600; letter-spacing:.03em; flex-shrink:0; }
@@ -330,7 +357,15 @@ STUDIO_HTML = """<!DOCTYPE html>
 
     <div class="view" id="view-queue">
       <div class="page-head"><h1>Review Queue</h1><p>Tasdiqlashni kutayotgan postlar</p></div>
-      <div class="queue-grid" id="queue-draft"><div class="empty">Yuklanmoqda...</div></div>
+      <div class="queue-layout">
+        <div class="queue-detail" id="queue-detail">
+          <div class="qd-empty">Postni o'ngdagi ro'yxatdan tanlang</div>
+        </div>
+        <div class="queue-sidelist">
+          <div class="queue-sidelist-label">Tasdiqlash kutmoqda</div>
+          <div class="mini-list" id="queue-mini-list"><div class="empty">Yuklanmoqda...</div></div>
+        </div>
+      </div>
     </div>
 
     <div class="view" id="view-published">
@@ -627,7 +662,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     closeMobileSidebar();
     if (!viewLoaded[name]) {
       viewLoaded[name] = true;
-      if (name === 'queue') loadAssets('draft', 'queue-draft');
+      if (name === 'queue') loadQueueMiniList();
       if (name === 'published') loadAssets('published', 'queue-published');
       if (name === 'rejected') loadAssets('rejected', 'queue-rejected');
       if (name === 'sources') loadSources();
@@ -748,16 +783,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       const items = await res.json();
       items.forEach(a => assetCache[a.id] = a);
       if (!items.length) {
-        if (status === 'draft') {
-          el.innerHTML = `
-            <div class="empty">
-              <div style="margin-bottom:10px">Hozircha Review Queue bo'sh.</div>
-              <button class="btn btn-gold" onclick="switchView('studio')">+ AI Content Studio'da post yaratish</button>
-            </div>
-          `;
-        } else {
-          el.innerHTML = '<div class="empty">Hozircha bu bo\\'limda post yo\\'q.</div>';
-        }
+        el.innerHTML = '<div class="empty">Hozircha bu bo\\'limda post yo\\'q.</div>';
         return;
       }
       el.innerHTML = items.map(a => {
@@ -781,9 +807,65 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
   }
 
+  let selectedQueueId = null;
+
+  function resetQueueDetail() {
+    selectedQueueId = null;
+    document.getElementById('queue-detail').innerHTML = '<div class="qd-empty">Postni o\\'ngdagi ro\\'yxatdan tanlang</div>';
+  }
+
+  async function loadQueueMiniList() {
+    const el = document.getElementById('queue-mini-list');
+    try {
+      const res = await apiGet('/api/studio/assets?status=draft');
+      const items = await res.json();
+      items.forEach(a => assetCache[a.id] = a);
+      if (!items.length) {
+        el.innerHTML = `
+          <div class="empty">
+            <div style="margin-bottom:10px">Hozircha Review Queue bo'sh.</div>
+            <button class="btn btn-gold" onclick="switchView('studio')">+ Yangi post yaratish</button>
+          </div>
+        `;
+        resetQueueDetail();
+        return;
+      }
+      el.innerHTML = items.map(a => `
+        <div class="mini-card" data-id="${a.id}" onclick="openQueueAsset(${a.id})">
+          <div class="mc-title">${escapeHtml((a.title || '').slice(0, 70))}</div>
+          <div class="mc-meta">${fmtTime(a.created_at)}${a.score ? ' · ball ' + a.score : ''}</div>
+        </div>
+      `).join('');
+      if (selectedQueueId && items.some(a => a.id === selectedQueueId)) {
+        document.querySelectorAll('.mini-card').forEach(c => c.classList.toggle('selected', Number(c.dataset.id) === selectedQueueId));
+      } else {
+        resetQueueDetail();
+      }
+    } catch (e) {
+      el.innerHTML = '<div class="empty">Xatolik yuz berdi.</div>';
+    }
+  }
+
+  function openQueueAsset(id) {
+    const a = assetCache[id];
+    if (!a) return;
+    selectedQueueId = id;
+    document.querySelectorAll('.mini-card').forEach(c => c.classList.toggle('selected', Number(c.dataset.id) === id));
+    document.getElementById('queue-detail').innerHTML = `
+      <div class="qd-title">${escapeHtml(a.title || '')}</div>
+      <div class="qd-meta">${escapeHtml(assetTypeLabel(a.type))} · ${fmtTime(a.created_at)}${a.source_url ? ' · <a class="rp-link" href="' + escapeAttr(a.source_url) + '" target="_blank">manba</a>' : ''}</div>
+      ${a.image_url ? `<div class="qd-img" style="background-image:url('${escapeAttr(a.image_url)}')"></div>` : ''}
+      <textarea id="qd-content" class="qd-textarea">${escapeHtml(a.content || '')}</textarea>
+      <div class="qd-actions">
+        <button class="btn btn-green" onclick="approveAsset(${a.id})">Tasdiqlash va yuborish</button>
+        <button class="btn btn-danger" onclick="rejectAsset(${a.id})">Rad etish</button>
+      </div>
+    `;
+  }
+
   function refreshCurrentLists() {
     loadStats();
-    if (viewLoaded['queue']) loadAssets('draft', 'queue-draft');
+    if (viewLoaded['queue']) loadQueueMiniList();
     if (viewLoaded['published']) loadAssets('published', 'queue-published');
     if (viewLoaded['rejected']) loadAssets('rejected', 'queue-rejected');
     loadActivityFeed();
@@ -794,7 +876,6 @@ STUDIO_HTML = """<!DOCTYPE html>
     if (!a) return;
     document.querySelectorAll('.q-card').forEach(c => c.classList.toggle('selected', Number(c.dataset.id) === id));
     const rp = document.getElementById('rightpanel');
-    const isDraft = a.status === 'draft';
     rp.innerHTML = `
       <button class="rp-close-mobile" onclick="closeRightPanel()">← Orqaga</button>
       <div class="rp-title">${escapeHtml((a.title || '').slice(0, 60))}</div>
@@ -803,23 +884,9 @@ STUDIO_HTML = """<!DOCTYPE html>
       ${a.image_url ? `<div class="rp-section"><div class="rp-label">Rasm</div><div class="rp-img" style="background-image:url('${escapeAttr(a.image_url)}')"></div></div>` : ''}
 
       <div class="rp-section">
-        <div class="rp-label">Post matni ${isDraft ? '(tahrirlash mumkin)' : ''}</div>
-        <textarea id="rp-content" style="min-height:180px" ${isDraft ? '' : 'readonly'}>${escapeHtml(a.content || '')}</textarea>
+        <div class="rp-label">Post matni</div>
+        <textarea style="min-height:180px" readonly>${escapeHtml(a.content || '')}</textarea>
       </div>
-
-      ${isDraft ? `
-        <div class="rp-actions">
-          <button class="btn btn-ghost btn-icon" onclick="saveAsset(${a.id})" title="Saqlash" aria-label="Saqlash">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
-          </button>
-          <button class="btn btn-green btn-icon" onclick="approveAsset(${a.id})" title="Tasdiqlash va yuborish" aria-label="Tasdiqlash va yuborish">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          </button>
-          <button class="btn btn-danger btn-icon" onclick="rejectAsset(${a.id})" title="Rad etish" aria-label="Rad etish">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-          </button>
-        </div>
-      ` : ''}
     `;
     rp.classList.add('open');
   }
@@ -832,10 +899,9 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   async function saveAsset(id) {
     try {
-      const res = await apiPost('/api/studio/assets/update', { id, content: document.getElementById('rp-content').value });
+      const res = await apiPost('/api/studio/assets/update', { id, content: document.getElementById('qd-content').value });
       const data = await res.json();
       if (!res.ok) { toast('Saqlashda xato: ' + (data.error || res.status)); return false; }
-      toast('Saqlandi');
       return true;
     } catch (e) {
       console.error('[saveAsset]', e);
@@ -863,7 +929,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         return;
       }
       toast('Kanalga yuborildi ✅');
-      closeRightPanel();
+      resetQueueDetail();
       refreshCurrentLists();
     } catch (e) {
       console.error('[approveAsset] exception', e);
@@ -888,7 +954,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         return;
       }
       toast('Rad etildi');
-      closeRightPanel();
+      resetQueueDetail();
       refreshCurrentLists();
     } catch (e) {
       console.error('[rejectAsset] exception', e);
