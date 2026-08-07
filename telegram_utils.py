@@ -27,18 +27,20 @@ _TG_ALLOWED_TAGS = {
 
 def sanitize_telegram_html(text: str) -> str:
     """Telegram qo'llab-quvvatlamaydigan HTML teglarni tozalaydi.
-    <br>, <br/>, <br /> — yangi qatorga aylantiriladi (mazmun yo'qolmasin
-    uchun). Boshqa ruxsat etilmagan teglar olib tashlanadi, lekin ichidagi
-    matn saqlanadi (faqat teg belgisi olinadi)."""
+    <br>, <br/>, <br />, va ba'zan AI chiqargan bo'shliqli variantlar
+    ('< br >', '< br/ >') — barchasi yangi qatorga aylantiriladi (mazmun
+    yo'qolmasin uchun). Boshqa ruxsat etilmagan teglar olib tashlanadi,
+    lekin ichidagi matn saqlanadi (faqat teg belgisi olinadi) — bu ham
+    xuddi shunday bo'shliqli variantlarni hisobga oladi."""
     if not text:
         return text
-    text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'<\s*br\s*/?\s*>', '\n', text, flags=re.IGNORECASE)
 
     def _strip_disallowed(m: re.Match) -> str:
         tag = m.group(1).lower().lstrip('/')
         return m.group(0) if tag in _TG_ALLOWED_TAGS else ''
 
-    text = re.sub(r'</?([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*>', _strip_disallowed, text)
+    text = re.sub(r'<\s*/?\s*([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*>', _strip_disallowed, text)
     return text
 
 
