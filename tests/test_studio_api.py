@@ -86,6 +86,108 @@ class TestApproveAssetChannelRouting:
         assert status == 400
 
 
+class TestPublishScheduling:
+    """MUHIM: publish_interval_minutes sozlanganda tasdiqlangan post
+    DARHOL Telegram'ga ketmasligi, navbatga (status='scheduled')
+    qo'yilishi kerak. Sozlanmagan (0, default) bo'lsa — eski
+    xatti-harakat: darhol yuboriladi (orqaga moslik)."""
+
+    def test_default_interval_zero_publishes_immediately(self, clean_db):
+        project = database.get_or_create_project('sched-default', 'Sched Default')
+        asset = database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title='T', content='Content long enough to pass validation checks here.',
+            score=0,
+        )
+        with patch.object(studio_api.telegram_utils, 'tg_channel', return_value={'ok': True}):
+            status, payload = studio_api.approve_asset({'id': asset['id']})
+        assert status == 200
+        assert payload['scheduled'] is False
+        assert database.get_asset(asset['id'])['status'] == 'published'
+
+    def test_positive_interval_queues_instead_of_publishing(self, clean_db):
+        project = database.get_or_create_project('sched-on', 'Sched On')
+        database.update_workflow_config(project['id'], {'publish_interval_minutes': 60})
+        asset = database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title='T', content='Content long enough to pass validation checks here.',
+            score=0,
+        )
+        with patch.object(studio_api.telegram_utils, 'tg_channel') as mock_tg:
+            status, payload = studio_api.approve_asset({'id': asset['id']})
+        mock_tg.assert_not_called()
+        assert status == 200
+        assert payload['scheduled'] is True
+        updated = database.get_asset(asset['id'])
+        assert updated['status'] == 'scheduled'
+        assert updated['scheduled_at'] is not None
+
+    def test_cannot_reapprove_scheduled_asset(self, clean_db):
+        project = database.get_or_create_project('sched-dup', 'Sched Dup')
+        database.update_workflow_config(project['id'], {'publish_interval_minutes': 30})
+        asset = database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title='T', content='Content long enough to pass validation checks here.',
+            score=0,
+        )
+        studio_api.approve_asset({'id': asset['id']})
+        status, payload = studio_api.approve_asset({'id': asset['id']})
+        assert status == 400
+
+    def test_publish_due_scheduled_skips_when_interval_not_elapsed(self, clean_db):
+        project = database.get_or_create_project('sched-wait', 'Sched Wait')
+        database.update_workflow_config(project['id'], {'publish_interval_minutes': 60})
+        asset = database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title='T', content='Content long enough to pass validation checks here.',
+            score=0,
+        )
+        studio_api.approve_asset({'id': asset['id']})
+        # Loyiha allaqachon bugun nashr qilgan (interval hali o'tmagan)
+        database.save_post(project['id'], None, 'Oldingi', 'Oldingi matn', None)
+        with patch.object(studio_api.telegram_utils, 'tg_channel') as mock_tg:
+            studio_api.publish_due_scheduled(project['id'])
+        mock_tg.assert_not_called()
+        assert database.get_asset(asset['id'])['status'] == 'scheduled'
+
+    def test_publish_due_scheduled_publishes_oldest_when_no_prior_post(self, clean_db):
+        # Loyiha hali hech qachon nashr qilmagan bo'lsa, interval
+        # to'sqinlik qilmasligi kerak (birinchi post darhol chiqadi).
+        project = database.get_or_create_project('sched-first', 'Sched First')
+        database.update_workflow_config(project['id'], {'publish_interval_minutes': 60})
+        asset = database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title='T', content='Content long enough to pass validation checks here.',
+            score=0,
+        )
+        studio_api.approve_asset({'id': asset['id']})
+        with patch.object(studio_api.telegram_utils, 'tg_channel', return_value={'ok': True}):
+            studio_api.publish_due_scheduled(project['id'])
+        assert database.get_asset(asset['id'])['status'] == 'published'
+
+    def test_publish_due_scheduled_noop_when_interval_disabled(self, clean_db):
+        project = database.get_or_create_project('sched-off', 'Sched Off')
+        asset = database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title='T', content='Content long enough to pass validation checks here.',
+            score=0,
+        )
+        database.schedule_asset(asset['id'])  # qo'lda navbatga qo'yamiz (odatda sodir bo'lmaydi)
+        with patch.object(studio_api.telegram_utils, 'tg_channel') as mock_tg:
+            studio_api.publish_due_scheduled(project['id'])
+        mock_tg.assert_not_called()
+
+    def test_publish_interval_rejects_negative(self, clean_db):
+        project = database.get_or_create_project('sched-neg', 'Sched Neg')
+        status, payload = studio_api.update_config(project['id'], {'publish_interval_minutes': -5})
+        assert status == 400
+
+    def test_publish_interval_accepts_zero(self, clean_db):
+        project = database.get_or_create_project('sched-zero', 'Sched Zero')
+        status, payload = studio_api.update_config(project['id'], {'publish_interval_minutes': 0})
+        assert status == 200
+
+
 class TestListAssetsSelfHeal:
     """MUHIM: sanitize_telegram_html() qo'shilishidan OLDIN yaratilgan
     eski draft'larda xom '<br>' teglari qolib ketgan bo'lishi mumkin edi.

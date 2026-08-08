@@ -130,6 +130,7 @@ _ALLOWED_CONFIG_KEYS = {
     'terminology', 'nicknames', 'channel_tag', 'tone',
     'domain_description', 'content_types', 'jargon', 'emoji_legend',
     'telegram_channel_id', 'prompts', 'gemini_api_key', 'auto_publish',
+    'publish_interval_minutes',
 }
 _ALLOWED_PROMPT_KEYS = {'researcher', 'writer', 'editor'}
 
@@ -156,6 +157,14 @@ def update_config(project_id: int, data: dict) -> tuple[int, object]:
         # Frontend checkbox true/false yuboradi, lekin xavfsizlik uchun
         # istalgan "haqiqiy" qiymatni ham bool'ga aylantiramiz.
         patch['auto_publish'] = bool(patch['auto_publish'])
+    if 'publish_interval_minutes' in patch:
+        try:
+            interval = int(patch['publish_interval_minutes'])
+        except (TypeError, ValueError):
+            return 400, {'error': "publish_interval_minutes butun son bo'lishi kerak (0 = darhol chiqarish)"}
+        if interval < 0:
+            return 400, {'error': "publish_interval_minutes manfiy bo'lishi mumkin emas"}
+        patch['publish_interval_minutes'] = interval
     if 'gemini_api_key' in patch:
         if not isinstance(patch['gemini_api_key'], str):
             return 400, {'error': "gemini_api_key matn bo'lishi kerak"}
@@ -199,6 +208,7 @@ def get_dashboard_stats(project_id: int) -> tuple[int, object]:
     try:
         import datetime as _dt
         drafts = database.get_assets(project_id, status='draft', limit=200)
+        scheduled = database.get_assets(project_id, status='scheduled', limit=200)
         published = database.get_assets(project_id, status='published', limit=200)
         rejected = database.get_assets(project_id, status='rejected', limit=200)
         sources = database.get_data_sources(project_id)
@@ -226,16 +236,23 @@ def get_dashboard_stats(project_id: int) -> tuple[int, object]:
             project_status = 'active' if age_seconds <= _STATUS_STALE_THRESHOLD_SECONDS else 'error'
 
         api_calls_used = database.get_today_api_calls(project_id)
-        auto_publish = bool(database.get_workflow_config(project_id).get('auto_publish'))
+        cfg = database.get_workflow_config(project_id)
+        auto_publish = bool(cfg.get('auto_publish'))
+        try:
+            publish_interval_minutes = int(cfg.get('publish_interval_minutes') or 0)
+        except (TypeError, ValueError):
+            publish_interval_minutes = 0
 
         return 200, {
             'pending_review': len(drafts),
+            'scheduled_count': len(scheduled),
             'published_total': len(published),
             'rejected_total': len(rejected),
             'posts_today': posts_today,
             'active_sources': sum(1 for s in sources if s.get('active')),
             'total_sources': len(sources),
             'auto_publish': auto_publish,
+            'publish_interval_minutes': publish_interval_minutes,
             'project_status': project_status,
             'last_run_at': last_run_at,
             'api_calls_used_today': api_calls_used,
@@ -293,20 +310,13 @@ def update_asset(data: dict) -> tuple[int, object]:
         return 500, {'error': str(e)}
 
 
-def approve_asset(data: dict) -> tuple[int, object]:
-    """Postni Telegram kanaliga yuboradi va 'published' deb belgilaydi.
-    FAQAT shu funksiya orqali kanalga chiqish mumkin — bot buyruqlarida
-    bunday imkoniyat yo'q."""
-    asset_id = data.get('id')
-    if asset_id is None:
-        return 400, {'error': 'id kerak'}
-    asset_id = int(asset_id)
-    asset = database.get_asset(asset_id)
-    if not asset:
-        return 404, {'error': 'topilmadi'}
-    if asset.get('status') == 'published':
-        return 400, {'error': 'bu post allaqachon yuborilgan'}
-
+def _publish_asset_now(asset: dict, reviewer: str = 'dashboard', notes: str = '') -> tuple[int, object]:
+    """Postni HAQIQATAN Telegram kanaliga yuboradi va 'published' deb
+    belgilaydi. Ichki funksiya — to'g'ridan-to'g'ri (interval sozlanmagan
+    loyihalarda, orqaga moslik) va scheduler (interval sozlangan
+    loyihalarda, navbatdan chiqqanda) IKKALASI HAM shu yerdan o'tadi —
+    kanalga chiqishning yagona yo'li."""
+    asset_id = asset['id']
     # MUHIM: postni QAYSI loyiha yaratgan bo'lsa, aynan O'SHA loyihaning
     # Telegram kanaliga yuboriladi — so'rov qaysi loyihadan kelganidan
     # qat'i nazar. Bu bitta bot bir nechta kanalga xizmat qilishi uchun
@@ -319,23 +329,90 @@ def approve_asset(data: dict) -> tuple[int, object]:
         asset['content'], image_url=asset.get('image_url'), chat_id=target_channel,
     )
     if not result.get('ok'):
-        log.error(f'[StudioAPI] approve_asset: TG xato: {result.get("description")}')
+        log.error(f'[StudioAPI] _publish_asset_now: TG xato: {result.get("description")}')
         return 502, {'error': f"Telegram xato: {result.get('description')}"}
 
     database.mark_asset_published(asset_id)
-    database.add_review(
-        asset_id,
-        reviewer=data.get('reviewer', 'dashboard'),
-        decision='approved',
-        notes=data.get('notes', ''),
-    )
+    database.add_review(asset_id, reviewer=reviewer, decision='approved', notes=notes)
     # Mini App (/webapp) endi FAQAT tasdiqlangan postlarni ko'rsatadi —
     # shuning uchun published_posts jadvaliga ham yozamiz. MUHIM: postning
     # O'Z LOYIHASI (asset['project_id']) bilan bog'lab saqlanadi — aks
     # holda boshqa loyihaning Mini App'ida bu post ham ko'rinib qolardi.
     database.save_post(asset['project_id'], asset.get('source_url'), asset['title'], asset['content'], asset.get('image_url'))
-    log.info(f'[StudioAPI] Asset #{asset_id} tasdiqlandi va kanalga yuborildi.')
+    log.info(f'[StudioAPI] Asset #{asset_id} kanalga yuborildi.')
     return 200, {'ok': True}
+
+
+def approve_asset(data: dict) -> tuple[int, object]:
+    """Postni tasdiqlaydi. FAQAT shu funksiya orqali post kanalga chiqish
+    yo'liga kiradi — bot buyruqlarida bunday imkoniyat yo'q.
+
+    Agar loyihada publish_interval_minutes > 0 sozlangan bo'lsa (Dashboard
+    -> Loyiha sozlamalari), post DARHOL yubormaydi — status='scheduled'
+    bilan navbatga qo'yiladi, background scheduler (main.py'dagi
+    publish_scheduler_loop) o'z vaqtida chiqaradi. Sozlanmagan bo'lsa
+    (default, orqaga moslik) — eski xatti-harakat: darhol yuboriladi."""
+    asset_id = data.get('id')
+    if asset_id is None:
+        return 400, {'error': 'id kerak'}
+    asset_id = int(asset_id)
+    asset = database.get_asset(asset_id)
+    if not asset:
+        return 404, {'error': 'topilmadi'}
+    if asset.get('status') in ('published', 'scheduled'):
+        return 400, {'error': 'bu post allaqachon tasdiqlangan'}
+
+    reviewer = data.get('reviewer', 'dashboard')
+    notes = data.get('notes', '')
+
+    config = database.get_workflow_config(asset['project_id'])
+    try:
+        interval_minutes = int(config.get('publish_interval_minutes') or 0)
+    except (TypeError, ValueError):
+        interval_minutes = 0
+
+    if interval_minutes > 0:
+        database.schedule_asset(asset_id)
+        database.add_review(asset_id, reviewer=reviewer, decision='approved', notes=notes)
+        log.info(f"[StudioAPI] Asset #{asset_id} navbatga qo'yildi (interval={interval_minutes} daq).")
+        return 200, {'ok': True, 'scheduled': True, 'publish_interval_minutes': interval_minutes}
+
+    status, payload = _publish_asset_now(asset, reviewer=reviewer, notes=notes)
+    if status == 200:
+        payload = {**payload, 'scheduled': False}
+    return status, payload
+
+
+def publish_due_scheduled(project_id: int) -> None:
+    """Background scheduler (main.py) har loyiha uchun davriy chaqiradi:
+    agar loyihada publish_interval_minutes sozlangan va oxirgi
+    nashrdan beri shu vaqt o'tgan bo'lsa, navbatdagi ENG ESKI postni
+    chiqaradi. Bir chaqiruvda FAQAT bitta post chiqadi — keyingisi
+    navbatdagi keyingi tsiklda (interval to'liq qayta o'tgach) ketadi."""
+    config = database.get_workflow_config(project_id)
+    try:
+        interval_minutes = int(config.get('publish_interval_minutes') or 0)
+    except (TypeError, ValueError):
+        interval_minutes = 0
+    if interval_minutes <= 0:
+        return
+
+    import datetime as _dt
+    last_published = database.get_last_published_at(project_id)
+    if last_published is not None:
+        now = _dt.datetime.now(_dt.timezone.utc)
+        last_dt = last_published if last_published.tzinfo else last_published.replace(tzinfo=_dt.timezone.utc)
+        elapsed_minutes = (now - last_dt).total_seconds() / 60
+        if elapsed_minutes < interval_minutes:
+            return
+
+    asset = database.get_next_scheduled_asset(project_id)
+    if not asset:
+        return
+
+    status, payload = _publish_asset_now(asset, reviewer='scheduler', notes="publish_interval_minutes bo'yicha avtomatik chiqarildi")
+    if status != 200:
+        log.error(f'[Scheduler] (loyiha={project_id}) Asset #{asset["id"]} chiqarishda xato: {payload}')
 
 
 def reject_asset(data: dict) -> tuple[int, object]:

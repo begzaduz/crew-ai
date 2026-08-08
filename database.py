@@ -189,6 +189,14 @@ def init_db() -> None:
             cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()")
             cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS image_url TEXT")
             cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ")
+            # Rejalashtirilgan chiqish uchun: admin tasdiqlagan (yoki
+            # auto_publish orqali avtomatik tasdiqlangan) post, lekin
+            # loyihada publish_interval_minutes > 0 bo'lsa, DARHOL
+            # kanalga yubormasdan, shu vaqt belgisi bilan navbatga
+            # qo'yiladi (status='scheduled'). Background scheduler shu
+            # ustun bo'yicha FIFO tartibda (eng eski tasdiqlangan
+            # birinchi) navbatdan chiqaradi.
+            cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ")
 
             cur.execute('''
                 CREATE TABLE IF NOT EXISTS reviews (
@@ -712,6 +720,57 @@ def set_asset_status(asset_id: int, status: str) -> None:
         with conn.cursor() as cur:
             cur.execute('UPDATE assets SET status=%s WHERE id=%s', (status, asset_id))
         conn.commit()
+    finally:
+        _put_conn(conn)
+
+
+def schedule_asset(asset_id: int) -> None:
+    """Postni darhol kanalga yubormasdan, navbatga qo'yadi (status='scheduled').
+    scheduled_at — navbat tartibi (FIFO, eng eski tasdiqlangan birinchi
+    chiqadi) uchun ishlatiladi."""
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE assets SET status='scheduled', scheduled_at=NOW() WHERE id=%s",
+                (asset_id,),
+            )
+        conn.commit()
+    finally:
+        _put_conn(conn)
+
+
+def get_next_scheduled_asset(project_id: int) -> dict | None:
+    """Loyihaning navbatdagi ENG ESKI (birinchi tasdiqlangan) postini
+    qaytaradi — scheduler shuni chiqaradi. Navbat bo'sh bo'lsa None."""
+    conn = _get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                '''SELECT * FROM assets WHERE project_id=%s AND status='scheduled'
+                   ORDER BY scheduled_at ASC LIMIT 1''',
+                (project_id,),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+    finally:
+        _put_conn(conn)
+
+
+def get_last_published_at(project_id: int):
+    """Loyihaning ENG SO'NGGI haqiqatan kanalga yuborilgan postining vaqti
+    (published_posts jadvalidan — yagona haqiqat manbai). Scheduler shu
+    asosda 'interval o'tdimi' deb hisoblaydi. Hech qachon nashr etilmagan
+    bo'lsa None."""
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                'SELECT MAX(published_at) FROM published_posts WHERE project_id=%s',
+                (project_id,),
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
     finally:
         _put_conn(conn)
 

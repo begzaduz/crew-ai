@@ -333,6 +333,13 @@ STUDIO_HTML = """<!DOCTYPE html>
         <button class="btn btn-ghost" onclick="resetBudget()">Byudjetni tozalash</button>
       </div>
 
+      <div class="lifecycle-card" id="schedule-card" style="display:none; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+        <div>
+          <h3 style="margin-bottom:6px">CHIQISH REJASI</h3>
+          <div style="font-size:12.5px; color:var(--text-dim)">Har <span id="schedule-interval">—</span> daqiqada bitta post — navbatda <span id="schedule-count">0</span> ta post kutmoqda</div>
+        </div>
+      </div>
+
       <div class="lifecycle-card">
         <h3>KONTENT HAYOT SIKLI</h3>
         <div class="lifecycle">
@@ -411,13 +418,15 @@ STUDIO_HTML = """<!DOCTYPE html>
           <div class="toggle-row" style="border-bottom:1px solid var(--border); margin-bottom:10px">
             <div class="toggle-copy">
               <div class="toggle-title">Avtomatik yuborish</div>
-              <div class="toggle-desc">Yoqilgan bo'lsa, AI yaratgan post Review Queue'da kutmasdan DARHOL kanalga yuboriladi (tekshirish yo'q). O'chirilgan bo'lsa — hozirgidek, faqat qo'lda tasdiqlagandan keyin.</div>
+              <div class="toggle-desc">Yoqilgan bo'lsa, AI yaratgan post Review Queue'da kutmasdan DARHOL tasdiqlanadi (odam tekshiruvi yo'q). Kanalga chiqish vaqti baribir pastdagi "Chiqish oralig'i"ga bo'ysunadi.</div>
             </div>
             <label class="switch">
               <input type="checkbox" id="auto-publish-toggle" onchange="saveChannelSettings()">
               <span class="switch-slider"></span>
             </label>
           </div>
+          <span class="field-label">Chiqish oralig'i (daqiqa) — tasdiqlangan postlar orasidagi minimal vaqt. 0 = darhol chiqadi (eski xatti-harakat)</span>
+          <input type="text" id="publish-interval-minutes" placeholder="0" inputmode="numeric" style="margin-bottom:10px; max-width:120px">
           <span class="field-label">Kanal yorlig'i (postning oxiriga qo'shiladigan matn)</span>
           <input type="text" id="channel-tag" placeholder="@Inglizfutbol" style="margin-bottom:10px">
           <span class="field-label">Uslub (tone)</span>
@@ -689,6 +698,16 @@ STUDIO_HTML = """<!DOCTYPE html>
       document.getElementById('kpi-today').textContent = s.posts_today ?? '—';
       document.getElementById('kpi-pending').textContent = s.pending_review ?? '—';
       document.getElementById('kpi-published').textContent = s.published_total ?? '—';
+      const scheduleCard = document.getElementById('schedule-card');
+      if (scheduleCard) {
+        if (s.publish_interval_minutes > 0) {
+          scheduleCard.style.display = 'flex';
+          document.getElementById('schedule-interval').textContent = s.publish_interval_minutes;
+          document.getElementById('schedule-count').textContent = s.scheduled_count ?? 0;
+        } else {
+          scheduleCard.style.display = 'none';
+        }
+      }
       document.getElementById('kpi-sources').textContent = s.active_sources ?? '—';
       document.getElementById('budget-used').textContent = s.api_calls_used_today ?? '—';
       document.getElementById('budget-limit').textContent = s.api_calls_limit_today ?? '—';
@@ -936,8 +955,8 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   async function approveAsset(id) {
     const ok = await showConfirmModal({
-      title: 'Kanalga yuborish',
-      message: 'Bu post kanalga yuboriladi. Tasdiqlaysizmi?',
+      title: 'Postni tasdiqlash',
+      message: 'Bu post tasdiqlanadi (chiqish rejasiga qarab darhol yoki navbat orqali kanalga ketadi). Tasdiqlaysizmi?',
       okLabel: 'Tasdiqlash',
       okClass: 'btn-green',
     });
@@ -952,7 +971,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         toast('Yuborishda xato: ' + (data.error || res.status));
         return;
       }
-      toast('Kanalga yuborildi ✅');
+      toast(data.scheduled ? 'Navbatga qo\\'yildi — o\\'z vaqtida chiqadi ⏳' : 'Kanalga yuborildi ✅');
       resetQueueDetail();
       refreshCurrentLists();
     } catch (e) {
@@ -1221,7 +1240,10 @@ STUDIO_HTML = """<!DOCTYPE html>
     const tone = document.getElementById('tone-field').value.trim();
     const gemini_api_key = document.getElementById('gemini-api-key').value.trim();
     const auto_publish = document.getElementById('auto-publish-toggle').checked;
-    const res = await apiPost('/api/studio/config', { domain_description, channel_tag, telegram_channel_id, tone, gemini_api_key, auto_publish });
+    const intervalRaw = document.getElementById('publish-interval-minutes').value.trim();
+    const publish_interval_minutes = intervalRaw === '' ? 0 : parseInt(intervalRaw, 10);
+    if (Number.isNaN(publish_interval_minutes) || publish_interval_minutes < 0) { toast("Chiqish oralig'i 0 yoki musbat butun son bo'lishi kerak"); return; }
+    const res = await apiPost('/api/studio/config', { domain_description, channel_tag, telegram_channel_id, tone, gemini_api_key, auto_publish, publish_interval_minutes });
     const data = await res.json();
     if (!res.ok) { toast(data.error || 'Xatolik'); return; }
     toast('Saqlandi');
@@ -1243,6 +1265,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       document.getElementById('telegram-channel-id').value = cfg.telegram_channel_id || '';
       document.getElementById('tone-field').value = cfg.tone || '';
       document.getElementById('auto-publish-toggle').checked = !!cfg.auto_publish;
+      document.getElementById('publish-interval-minutes').value = cfg.publish_interval_minutes || 0;
       const keyInput = document.getElementById('gemini-api-key');
       keyInput.value = '';
       keyInput.placeholder = cfg.gemini_api_key_set

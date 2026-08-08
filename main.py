@@ -556,6 +556,34 @@ def news_loop() -> None:
         time.sleep(INTERVAL)
 
 
+# Scheduler necha soniyada bir marta navbatlarni tekshiradi. Bu INTERVAL'dan
+# (RSS tsikli, soatlab) ancha qisqaroq bo'lishi kerak — aks holda
+# publish_interval_minutes past qiymatga (masalan 5 daq) sozlansa ham,
+# post real vaqtda emas, faqat keyingi RSS tsiklida chiqib qolardi.
+PUBLISH_SCHEDULER_TICK_SECONDS = 60
+
+
+def publish_scheduler_loop() -> None:
+    """Barcha loyihalarni birma-bir aylanib, har biri uchun navbatda
+    (status='scheduled') chiqishni kutayotgan post bor-yo'qligini va
+    publish_interval_minutes vaqti o'tganini tekshiradi. Loyihada interval
+    sozlanmagan (0) bo'lsa, studio_api.publish_due_scheduled() darhol
+    qaytadi — hech narsa qilmaydi (orqaga moslik, eski loyihalarga
+    ta'sir qilmaydi)."""
+    time.sleep(10)
+    while True:
+        try:
+            projects = database.list_projects()
+            for project in projects:
+                try:
+                    studio_api.publish_due_scheduled(project['id'])
+                except Exception as e:
+                    log.error(f"[Scheduler] (loyiha={project['id']}) {e}")
+        except Exception as e:
+            log.error(f'[Scheduler] {e}')
+        time.sleep(PUBLISH_SCHEDULER_TICK_SECONDS)
+
+
 # ── Entry point ───────────────────────────────────────────
 if __name__ == '__main__':
     init_db()
@@ -576,6 +604,7 @@ if __name__ == '__main__':
         f'| Dashboard: /studio'
     )
     threading.Thread(target=news_loop, daemon=True).start()
+    threading.Thread(target=publish_scheduler_loop, daemon=True).start()
     server = ThreadingHTTPServer(('0.0.0.0', PORT), WebhookHandler)
     try:
         server.serve_forever()
