@@ -31,7 +31,9 @@ STUDIO_HTML = """<!DOCTYPE html>
   ::-webkit-scrollbar{ width:8px; height:8px; }
   ::-webkit-scrollbar-thumb{ background:var(--border); border-radius:8px; }
 
-  .shell{ display:grid; grid-template-columns: 220px 1fr 320px; height:100vh; }
+  .shell{ display:grid; grid-template-columns: 220px 1fr; height:100vh; }
+  .shell.rp-open{ grid-template-columns: 220px 1fr 320px; }
+  .shell.rp-open .rightpanel{ display:block; }
 
   .mobile-topbar{ display:none; }
   .mobile-backdrop{ display:none; }
@@ -71,6 +73,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     .stat-item:nth-child(2n+1){ border-left:none; }
 
     .rightpanel{
+      display:block;
       position:fixed; inset:0; z-index:110; width:auto; height:100vh;
       transform:translateX(100%); transition:transform .2s ease;
       padding:16px 16px 24px;
@@ -230,7 +233,7 @@ STUDIO_HTML = """<!DOCTYPE html>
   .switch input:checked + .switch-slider{ background:rgba(255,138,61,.18); border-color:var(--gold); }
   .switch input:checked + .switch-slider::before{ transform:translateX(16px); background:var(--gold); }
 
-  .rightpanel{ background:var(--navy-deep); border-left:1px solid var(--border); padding:16px 16px; overflow-y:auto; }
+  .rightpanel{ display:none; background:var(--navy-deep); border-left:1px solid var(--border); padding:16px 16px; overflow-y:auto; }
   .rp-empty{ height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; color:var(--text-faint); font-size:12px; gap:8px; }
   .rp-title{ font-size:13.5px; font-weight:700; margin-bottom:2px; font-family:var(--font-display); }
   .rp-sub{ font-size:10.5px; color:var(--text-faint); margin-bottom:12px; }
@@ -657,7 +660,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     closeMobileSidebar();
     if (name === 'queue') {
       renderQueuePendingList();
-    } else if (rightpanelMode === 'queue-list') {
+    } else {
       closeRightPanel();
     }
     if (!viewLoaded[name]) {
@@ -817,6 +820,7 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   async function renderQueuePendingList() {
     rightpanelMode = 'queue-list';
+    document.querySelector('.shell').classList.add('rp-open');
     const rp = document.getElementById('rightpanel');
     try {
       const res = await apiGet('/api/studio/assets?status=draft');
@@ -895,6 +899,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     const a = assetCache[id];
     if (!a) return;
     rightpanelMode = 'asset-detail';
+    document.querySelector('.shell').classList.add('rp-open');
     document.querySelectorAll('.q-card').forEach(c => c.classList.toggle('selected', Number(c.dataset.id) === id));
     const rp = document.getElementById('rightpanel');
     rp.innerHTML = `
@@ -916,6 +921,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     rightpanelMode = 'empty';
     document.getElementById('rightpanel').innerHTML = '<div class="rp-empty"><div>Postni tanlang — tafsilotlar shu yerda ko\\'rinadi</div></div>';
     document.getElementById('rightpanel').classList.remove('open');
+    document.querySelector('.shell').classList.remove('rp-open');
     document.querySelectorAll('.q-card').forEach(c => c.classList.remove('selected'));
   }
 
