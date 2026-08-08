@@ -24,13 +24,6 @@ GEMINI_MODEL = 'gemini-3.6-flash'
 # ── Football-data.org ─────────────────────────────────────
 FOOTBALL_DATA_KEY = os.getenv('FOOTBALL_DATA_KEY', '')
 
-# ── Google Custom Search (rasm qidirish) ───────────────────
-# Ixtiyoriy: sozlanmasa, "Internetdan qidirish" funksiyasi shunchaki
-# o'chirilgan holatda ishlaydi (image_search.search_images() None
-# qaytaradi) — boshqa hech narsaga ta'sir qilmaydi.
-GOOGLE_SEARCH_API_KEY = os.getenv('GOOGLE_SEARCH_API_KEY', '')
-GOOGLE_SEARCH_CX = os.getenv('GOOGLE_SEARCH_CX', '')
-
 # ── Serverning o'z ochiq (public) manzili ──────────────────
 # Dashboard'dan yuklangan rasmlar o'z DB'imizda saqlanadi va shu manzil
 # orqali (masalan https://xxx.up.railway.app/api/image/42) tashqariga

@@ -10,7 +10,6 @@ import re
 
 import database
 import telegram_utils
-import image_search
 from config import DAILY_POST_BUDGET, INTERVAL, PUBLIC_BASE_URL
 from workflows.rss_news import (
     RESEARCHER_PROMPT_TEMPLATE, WRITER_PROMPT_TEMPLATE, EDITOR_PROMPT_TEMPLATE,
@@ -528,18 +527,26 @@ def reset_api_budget(project_id: int, _data: dict) -> tuple[int, object]:
         return 500, {'error': str(e)}
 
 
-# ── Rasmlar: yuklash (upload) va internetdan qidirish ──────────────
-# Ikkalasi ham asset_id talab qilmaydi — New Request'da asset hali
-# yaratilmasdan turib rasm tanlanadi (image_url keyin submit_manual_content
-# orqali create_asset()ga beriladi), Review Queue'da esa mavjud draft'ning
+# ── Rasmlar: yuklash (upload) ────────────────────────────────────
+# asset_id talab qilmaydi — New Request'da asset hali yaratilmasdan
+# turib rasm tanlanadi (image_url keyin submit_manual_content orqali
+# create_asset()ga beriladi), Review Queue'da esa mavjud draft'ning
 # rasmini almashtirish uchun alohida set_asset_image() ishlatiladi.
-_MAX_UPLOAD_BYTES = 6_000_000
+_MAX_UPLOAD_BYTES = 15_000_000
 _ALLOWED_IMAGE_CONTENT_TYPES = {'image/jpeg', 'image/png', 'image/webp', 'image/gif'}
 
 
 def upload_image(project_id: int, data: dict) -> tuple[int, object]:
     """Dashboard'dan yuklangan rasmni DB'ga saqlaydi va shu serverning
-    o'zidan ochiladigan URL qaytaradi (tashqi fayl-hosting shart emas)."""
+    o'zidan ochiladigan (to'liq, https://... bilan boshlanuvchi) URL
+    qaytaradi — tashqi fayl-hosting shart emas.
+
+    Ochiq manzil (base_url) ODATDA so'rovning o'zidan (Host/
+    X-Forwarded-Proto headerlari, main.py'da aniqlanadi va
+    data['_request_base_url']ga qo'yiladi) avtomatik olinadi — admin
+    hech qanday qo'shimcha sozlash qilishi shart emas. PUBLIC_BASE_URL
+    .env o'zgaruvchisi faqat ZAXIRA (masalan agar so'rov proksi ortidan
+    kelib, header'lar ishonchli bo'lmasa)."""
     import base64
 
     content_type = (data.get('content_type') or '').strip().lower()
@@ -557,10 +564,10 @@ def upload_image(project_id: int, data: dict) -> tuple[int, object]:
     except Exception:
         return 400, {'error': "image_base64 noto'g'ri formatda"}
 
-    if len(raw) > _MAX_UPLOAD_BYTES:
-        return 400, {'error': f"Rasm juda katta (max {_MAX_UPLOAD_BYTES // 1_000_000}MB)"}
     if not raw:
         return 400, {'error': "Rasm bo'sh"}
+    if len(raw) > _MAX_UPLOAD_BYTES:
+        return 400, {'error': f"Rasm juda katta (max {_MAX_UPLOAD_BYTES // 1_000_000}MB)"}
 
     try:
         upload_id = database.save_upload(project_id, content_type, raw)
@@ -568,32 +575,21 @@ def upload_image(project_id: int, data: dict) -> tuple[int, object]:
         log.error(f'[StudioAPI] upload_image: {e}')
         return 500, {'error': str(e)}
 
-    if not PUBLIC_BASE_URL:
-        log.warning('[StudioAPI] PUBLIC_BASE_URL sozlanmagan — yuklangan rasm URL nisbiy qoladi, Telegram unga ulana olmaydi.')
+    base_url = (data.get('_request_base_url') or PUBLIC_BASE_URL or '').rstrip('/')
+    if not base_url:
+        log.warning('[StudioAPI] Ochiq manzil aniqlanmadi — yuklangan rasm URL nisbiy qoladi, Telegram unga ulana olmaydi.')
         url = f'/api/image/{upload_id}'
     else:
-        url = f'{PUBLIC_BASE_URL}/api/image/{upload_id}'
+        url = f'{base_url}/api/image/{upload_id}'
 
-    log.info(f'[StudioAPI] Rasm yuklandi (project={project_id}, upload_id={upload_id}, {len(raw)} bayt).')
+    log.info(f'[StudioAPI] Rasm yuklandi (project={project_id}, upload_id={upload_id}, {len(raw)} bayt, url={url}).')
     return 200, {'id': upload_id, 'url': url}
-
-
-def search_images_api(_project_id, data: dict) -> tuple[int, object]:
-    query = (data.get('query') or '').strip()
-    if not query:
-        return 400, {'error': 'query kerak'}
-    if not image_search.is_configured():
-        return 503, {'error': "Rasm qidirish sozlanmagan (GOOGLE_SEARCH_API_KEY / GOOGLE_SEARCH_CX yo'q)"}
-    results = image_search.search_images(query)
-    if results is None:
-        return 502, {'error': 'Google qidiruv xato qaytardi'}
-    return 200, {'results': results}
 
 
 def set_asset_image(data: dict) -> tuple[int, object]:
     """Review Queue'dagi mavjud draft'ning rasmini o'rnatadi/almashtiradi
-    (upload'dan yoki Google qidiruvidan tanlangan URL bilan). Rasmni
-    olib tashlash uchun image_url bo'sh yuboriladi."""
+    (upload'dan tanlangan URL bilan). Rasmni olib tashlash uchun
+    image_url bo'sh yuboriladi."""
     asset_id = data.get('id')
     if asset_id is None:
         return 400, {'error': 'id kerak'}
@@ -631,6 +627,5 @@ POST_ROUTES = {
     '/api/studio/assets/submit':    lambda project_id, body: submit_manual_content(project_id, body),
     '/api/studio/assets/set_image': lambda project_id, body: set_asset_image(body),
     '/api/studio/images/upload':    lambda project_id, body: upload_image(project_id, body),
-    '/api/studio/images/search':    lambda project_id, body: search_images_api(project_id, body),
     '/api/studio/budget/reset':     lambda project_id, body: reset_api_budget(project_id, body),
 }

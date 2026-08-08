@@ -130,17 +130,20 @@ def _resolve_project_id(source: dict) -> int:
 def _maybe_auto_publish(project_id: int, asset: dict) -> None:
     """Agar loyihada Dashboard'dan 'Avtomatik yuborish' yoqilgan bo'lsa
     (workflows.config['auto_publish'] == True), yangi yaratilgan postni
-    Review Queue'da odam tasdiqlashini kutmasdan DARHOL kanalga yuboradi.
-    Yuborish logikasi studio_api.approve_asset() orqali — shu bilan
-    Telegram'ga chiqish, 'published' deb belgilash va published_posts'ga
-    yozish har doim BITTA joydan (qo'lda tasdiqlash bilan bir xil yo'ldan)
-    o'tadi, ikki xil kod yo'li ushlab turilmaydi."""
+    Review Queue'da odam tasdiqlashini kutmasdan avtomatik tasdiqlaydi.
+    Tasdiqlash logikasi studio_api.approve_asset() orqali — shu bilan
+    Telegram'ga chiqish (yoki publish_interval_minutes sozlangan bo'lsa,
+    navbatga qo'yish) har doim BITTA joydan (qo'lda tasdiqlash bilan bir
+    xil yo'ldan) o'tadi, ikki xil kod yo'li ushlab turilmaydi."""
     config = database.get_workflow_config(project_id)
     if not config.get('auto_publish'):
         return
     status, payload = studio_api.approve_asset({'id': asset['id'], 'reviewer': 'auto_publish'})
     if status == 200:
-        log.info(f"[Auto] (loyiha={project_id}) 'Avtomatik yuborish' yoqilgan — asset #{asset['id']} darhol kanalga ketdi.")
+        if payload.get('scheduled'):
+            log.info(f"[Auto] (loyiha={project_id}) 'Avtomatik yuborish' yoqilgan — asset #{asset['id']} navbatga qo'yildi (chiqish oralig'i bo'yicha keyinroq chiqadi).")
+        else:
+            log.info(f"[Auto] (loyiha={project_id}) 'Avtomatik yuborish' yoqilgan — asset #{asset['id']} darhol kanalga ketdi.")
     else:
         log.error(f"[Auto] (loyiha={project_id}) Avtomatik yuborishda xato (asset #{asset['id']}): {payload}")
 
@@ -369,7 +372,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
     # Rasm yuklash (base64) — dekodlanmagan JSON payload ~33% kattaroq
     # bo'ladi, shuning uchun oddiy limitdan yuqoriroq kerak. Faqat shu
     # bitta route uchun (auth baribir avval tekshiriladi, DoS xavfi yo'q).
-    IMAGE_UPLOAD_MAX_BODY_SIZE = 9_000_000
+    IMAGE_UPLOAD_MAX_BODY_SIZE = 20_000_000
 
     def _json(self, data, status: int = 200, cors: bool = False) -> None:
         body = json.dumps(data, default=str, ensure_ascii=False).encode('utf-8')
@@ -396,10 +399,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
         limit = max_size if max_size is not None else self.MAX_BODY_SIZE
         length = int(self.headers.get('Content-Length', 0))
         if length > limit:
-            self.send_response(413)
-            self.send_header('Content-Type', 'text/plain; charset=utf-8')
-            self.end_headers()
-            self.wfile.write(b'Payload too large')
+            self._json({'error': f'Fayl juda katta (max {limit // 1_000_000}MB)'}, status=413)
             return None
         return self.rfile.read(length)
 
@@ -432,6 +432,15 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 data = json.loads(body) if body else {}
             except Exception:
                 data = {}
+            if path == '/api/studio/images/upload':
+                # PUBLIC_BASE_URL .env'da sozlanishi ixtiyoriy (fallback) —
+                # odatiy holatda so'rovning o'zidan (Host/X-Forwarded-Proto
+                # headerlari) ochiq manzilni avtomatik aniqlaymiz, shunda
+                # admin qo'shimcha sozlash haqida umuman o'ylashi shart emas.
+                host = self.headers.get('Host', '')
+                if host:
+                    scheme = self.headers.get('X-Forwarded-Proto', 'https')
+                    data['_request_base_url'] = f'{scheme}://{host}'
             try:
                 status, payload = studio_api.POST_ROUTES[path](_resolve_project_id(data), data)
             except Exception as e:

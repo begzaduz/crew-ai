@@ -245,10 +245,6 @@ STUDIO_HTML = """<!DOCTYPE html>
   .img-picker-preview{ width:100%; max-width:420px; height:160px; border-radius:var(--radius); background:var(--surface-2) center/cover no-repeat; border:1px solid var(--border); margin-bottom:8px; display:flex; align-items:center; justify-content:center; color:var(--text-faint); font-size:12px; }
   .img-picker-actions{ display:flex; gap:7px; flex-wrap:wrap; }
   .btn-file-label{ display:inline-flex; align-items:center; }
-  .img-search-box{ max-width:420px; }
-  .img-search-results{ display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-top:8px; }
-  .img-search-thumb{ width:100%; aspect-ratio:1; border-radius:var(--radius-sm); background:var(--surface-2) center/cover no-repeat; border:1px solid var(--border); cursor:pointer; }
-  .img-search-thumb:hover{ border-color:var(--gold); }
   .rp-actions{ display:flex; gap:7px; margin-top:12px; }
   .rp-actions .btn{ flex:1; padding:8px 0; text-align:center; }
   .rp-link{ color:var(--gold); font-size:11px; text-decoration:none; }
@@ -1024,8 +1020,8 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
   }
 
-  // ── Rasm tanlash (yuklash / Google'dan qidirish) — New Request va
-  // Review Queue'da bir xil komponent, faqat prefix orqali farqlanadi ──
+  // ── Rasm tanlash (yuklash) — New Request va Review Queue'da bir xil
+  // komponent, faqat prefix orqali farqlanadi ──
   const imagePickerState = {};
 
   function imagePickerHTML(prefix, currentUrl) {
@@ -1036,15 +1032,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         <div class="img-picker-preview" id="${prefix}-preview" style="${hasImg ? `background-image:url('${escapeAttr(currentUrl)}')` : ''}">${hasImg ? '' : "Rasm yo'q"}</div>
         <div class="img-picker-actions">
           <label class="btn btn-ghost btn-file-label">Yuklash<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" id="${prefix}-file" style="display:none" onchange="handleImageFileChange('${prefix}')"></label>
-          <button class="btn btn-ghost" type="button" onclick="toggleImageSearchBox('${prefix}')">Google'da qidirish</button>
           <button class="btn btn-danger" type="button" id="${prefix}-clear-btn" style="${hasImg ? '' : 'display:none'}" onclick="clearPickedImage('${prefix}')">Olib tashlash</button>
-        </div>
-        <div class="img-search-box" id="${prefix}-search-box" style="display:none">
-          <div style="display:flex; gap:6px; margin-top:8px">
-            <input type="text" id="${prefix}-search-input" placeholder="masalan: Arsenal stadium" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault(); runImageSearch('${prefix}');}">
-            <button class="btn btn-gold" type="button" onclick="runImageSearch('${prefix}')">Qidirish</button>
-          </div>
-          <div class="img-search-results" id="${prefix}-search-results"></div>
         </div>
       </div>
     `;
@@ -1082,17 +1070,6 @@ STUDIO_HTML = """<!DOCTYPE html>
     return state ? state.url : null;
   }
 
-  function toggleImageSearchBox(prefix) {
-    const box = document.getElementById(`${prefix}-search-box`);
-    if (!box) return;
-    const showing = box.style.display !== 'none';
-    box.style.display = showing ? 'none' : 'block';
-    if (!showing) {
-      const input = document.getElementById(`${prefix}-search-input`);
-      if (input) input.focus();
-    }
-  }
-
   function fileToBase64(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -1108,7 +1085,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     if (!file) return;
     const allowed = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
     if (!allowed.includes(file.type)) { toast('Faqat PNG/JPEG/WEBP/GIF qabul qilinadi'); fileInput.value = ''; return; }
-    if (file.size > 6000000) { toast("Rasm juda katta (max 6MB)"); fileInput.value = ''; return; }
+    if (file.size > 15000000) { toast("Rasm juda katta (max 15MB)"); fileInput.value = ''; return; }
     toast('Yuklanmoqda...');
     try {
       const b64 = await fileToBase64(file);
@@ -1118,41 +1095,11 @@ STUDIO_HTML = """<!DOCTYPE html>
       setPickedImage(prefix, data.url);
       toast('Rasm yuklandi ✅');
     } catch (e) {
+      console.error('[handleImageFileChange]', e);
       toast('Yuklashda xatolik: ' + e.message);
     } finally {
       fileInput.value = '';
     }
-  }
-
-  async function runImageSearch(prefix) {
-    const input = document.getElementById(`${prefix}-search-input`);
-    const query = input ? input.value.trim() : '';
-    if (!query) return;
-    const resultsEl = document.getElementById(`${prefix}-search-results`);
-    resultsEl.innerHTML = '<div class="empty" style="padding:8px 0">Qidirilmoqda...</div>';
-    try {
-      const res = await apiPost('/api/studio/images/search', { query });
-      const data = await res.json();
-      if (!res.ok) { resultsEl.innerHTML = `<div class="empty" style="padding:8px 0">${escapeHtml(data.error || 'Xatolik')}</div>`; return; }
-      const results = data.results || [];
-      if (!results.length) { resultsEl.innerHTML = '<div class="empty" style="padding:8px 0">Hech narsa topilmadi</div>'; return; }
-      imagePickerState[prefix].searchResults = results;
-      resultsEl.innerHTML = results.map((r, i) => `
-        <div class="img-search-thumb" style="background-image:url('${escapeAttr(r.thumbnail)}')" onclick="pickSearchImage('${prefix}', ${i})" title="${escapeAttr(r.title || '')}"></div>
-      `).join('');
-    } catch (e) {
-      resultsEl.innerHTML = '<div class="empty" style="padding:8px 0">Tarmoq xatosi</div>';
-    }
-  }
-
-  function pickSearchImage(prefix, index) {
-    const state = imagePickerState[prefix];
-    const r = state && state.searchResults && state.searchResults[index];
-    if (!r) return;
-    setPickedImage(prefix, r.url);
-    const box = document.getElementById(`${prefix}-search-box`);
-    if (box) box.style.display = 'none';
-    toast('Rasm tanlandi');
   }
 
   async function submitManual() {

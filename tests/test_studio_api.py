@@ -5,7 +5,7 @@ import database
 import studio_api
 
 
-class TestImageUploadAndSearch:
+class TestImageUpload:
     def test_upload_image_rejects_bad_content_type(self, clean_db):
         project = database.get_or_create_project('img-up-1', 'Img Up 1')
         status, payload = studio_api.upload_image(project['id'], {
@@ -59,22 +59,16 @@ class TestImageUploadAndSearch:
         })
         assert status == 400
 
-    def test_search_images_requires_query(self, clean_db):
-        status, payload = studio_api.search_images_api(None, {'query': ''})
-        assert status == 400
-
-    def test_search_images_returns_503_when_not_configured(self, clean_db):
-        with patch.object(studio_api.image_search, 'is_configured', return_value=False):
-            status, payload = studio_api.search_images_api(None, {'query': 'arsenal'})
-        assert status == 503
-
-    def test_search_images_returns_results(self, clean_db):
-        fake_results = [{'url': 'https://x.com/a.jpg', 'thumbnail': 'https://x.com/t.jpg', 'title': 'A'}]
-        with patch.object(studio_api.image_search, 'is_configured', return_value=True), \
-             patch.object(studio_api.image_search, 'search_images', return_value=fake_results):
-            status, payload = studio_api.search_images_api(None, {'query': 'arsenal'})
+    def test_upload_image_success_returns_url_from_request_base_url(self, clean_db):
+        import base64
+        project = database.get_or_create_project('img-up-7', 'Img Up 7')
+        b64 = base64.b64encode(b'fake-png-bytes').decode()
+        status, payload = studio_api.upload_image(project['id'], {
+            'content_type': 'image/png', 'image_base64': b64,
+            '_request_base_url': 'https://web-production-71148.up.railway.app',
+        })
         assert status == 200
-        assert payload['results'] == fake_results
+        assert payload['url'] == f"https://web-production-71148.up.railway.app/api/image/{payload['id']}"
 
     def test_set_asset_image_updates(self, clean_db):
         project = database.get_or_create_project('img-set-1', 'Img Set 1')
