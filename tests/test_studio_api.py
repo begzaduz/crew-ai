@@ -207,6 +207,32 @@ class TestPublishScheduling:
         assert updated['status'] == 'scheduled'
         assert updated['scheduled_at'] is not None
 
+    def test_unschedule_returns_asset_to_draft(self, clean_db):
+        project = database.get_or_create_project('sched-cancel', 'Sched Cancel')
+        database.update_workflow_config(project['id'], {'publish_interval_minutes': 60})
+        asset = database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title='T', content='Content long enough to pass validation checks here.',
+            score=0,
+        )
+        studio_api.approve_asset({'id': asset['id']})
+        assert database.get_asset(asset['id'])['status'] == 'scheduled'
+        status, payload = studio_api.unschedule_asset({'id': asset['id']})
+        assert status == 200
+        updated = database.get_asset(asset['id'])
+        assert updated['status'] == 'draft'
+        assert updated['scheduled_at'] is None
+
+    def test_unschedule_rejects_non_scheduled_asset(self, clean_db):
+        project = database.get_or_create_project('sched-cancel2', 'Sched Cancel 2')
+        asset = database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title='T', content='Content long enough to pass validation checks here.',
+            score=0,
+        )
+        status, payload = studio_api.unschedule_asset({'id': asset['id']})
+        assert status == 400
+
     def test_cannot_reapprove_scheduled_asset(self, clean_db):
         project = database.get_or_create_project('sched-dup', 'Sched Dup')
         database.update_workflow_config(project['id'], {'publish_interval_minutes': 30})

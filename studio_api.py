@@ -434,6 +434,24 @@ def reject_asset(data: dict) -> tuple[int, object]:
         return 500, {'error': str(e)}
 
 
+def unschedule_asset(data: dict) -> tuple[int, object]:
+    """Navbatdagi postni bekor qiladi — qaytadan Review Queue'ga
+    (status='draft') qo'yadi, admin qayta ko'rib chiqishi mumkin."""
+    asset_id = data.get('id')
+    if asset_id is None:
+        return 400, {'error': 'id kerak'}
+    asset_id = int(asset_id)
+    asset = database.get_asset(asset_id)
+    if not asset or asset.get('status') != 'scheduled':
+        return 400, {'error': "bu post navbatda emas"}
+    try:
+        database.unschedule_asset(asset_id)
+        return 200, {'ok': True}
+    except Exception as e:
+        log.error(f'[StudioAPI] unschedule_asset: {e}')
+        return 500, {'error': str(e)}
+
+
 def submit_manual_content(project_id: int, data: dict) -> tuple[int, object]:
     """Dashboard'dan qo'lda kiritilgan xom matn (boshqa tilda bo'lishi ham
     mumkin) — pipeline uni tarjima qilib, formatlab, Review Queue'ga
@@ -624,6 +642,7 @@ POST_ROUTES = {
     '/api/studio/assets/update':    lambda project_id, body: update_asset(body),
     '/api/studio/assets/approve':   lambda project_id, body: approve_asset(body),
     '/api/studio/assets/reject':    lambda project_id, body: reject_asset(body),
+    '/api/studio/assets/unschedule': lambda project_id, body: unschedule_asset(body),
     '/api/studio/assets/submit':    lambda project_id, body: submit_manual_content(project_id, body),
     '/api/studio/assets/set_image': lambda project_id, body: set_asset_image(body),
     '/api/studio/images/upload':    lambda project_id, body: upload_image(project_id, body),

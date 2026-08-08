@@ -299,6 +299,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       <div class="group">
         <div class="group-label">Pipeline</div>
         <div class="nav-item" data-view="queue" onclick="switchView('queue')">Review Queue <span class="count" id="nav-count-draft">0</span></div>
+        <div class="nav-item" data-view="scheduled" onclick="switchView('scheduled')">Scheduled <span class="count" id="nav-count-scheduled">0</span></div>
         <div class="nav-item" data-view="published" onclick="switchView('published')">Published <span class="count" id="nav-count-published">0</span></div>
         <div class="nav-item" data-view="rejected" onclick="switchView('rejected')">Rejected <span class="count" id="nav-count-rejected">0</span></div>
         <div class="nav-item disabled" title="Tez orada">Archive</div>
@@ -338,11 +339,12 @@ STUDIO_HTML = """<!DOCTYPE html>
         <button class="btn btn-ghost" onclick="resetBudget()">Byudjetni tozalash</button>
       </div>
 
-      <div class="lifecycle-card" id="schedule-card" style="display:none; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+      <div class="lifecycle-card" id="schedule-card" style="display:none; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; cursor:pointer;" onclick="switchView('scheduled')">
         <div>
           <h3 style="margin-bottom:6px">CHIQISH REJASI</h3>
           <div style="font-size:12.5px; color:var(--text-dim)">Har <span id="schedule-interval">—</span> daqiqada bitta post — navbatda <span id="schedule-count">0</span> ta post kutmoqda</div>
         </div>
+        <span class="rp-link">Boshqarish →</span>
       </div>
 
       <div class="lifecycle-card">
@@ -370,6 +372,19 @@ STUDIO_HTML = """<!DOCTYPE html>
       <div class="queue-detail" id="queue-detail">
         <div class="qd-empty">Postni tanlang — tafsilotlar shu yerda ko'rinadi</div>
       </div>
+    </div>
+
+    <div class="view" id="view-scheduled">
+      <div class="page-head"><h1>Scheduled</h1><p>Tasdiqlangan, lekin hali kanalga chiqmagan — navbatda kutayotgan postlar</p></div>
+      <div class="studio-card" style="margin-bottom:16px; max-width:none;">
+        <span class="field-label">Chiqish oralig'i (daqiqa) — tasdiqlangan postlar orasidagi minimal vaqt. 0 = darhol chiqadi</span>
+        <div style="display:flex; gap:8px; align-items:center; margin-top:4px;">
+          <input type="text" id="publish-interval-minutes" placeholder="0" inputmode="numeric" style="max-width:120px">
+          <button class="btn btn-gold" onclick="saveScheduleInterval()">Saqlash</button>
+        </div>
+        <div style="font-size:10.5px; color:var(--text-faint); margin-top:6px">Masalan 60 — har soatda bitta post chiqadi. Bu sozlama "Avtomatik yuborish" yoqilgan bo'lsa ham amal qiladi.</div>
+      </div>
+      <div class="queue-grid" id="queue-scheduled"><div class="empty">Yuklanmoqda...</div></div>
     </div>
 
     <div class="view" id="view-published">
@@ -424,15 +439,13 @@ STUDIO_HTML = """<!DOCTYPE html>
           <div class="toggle-row" style="border-bottom:1px solid var(--border); margin-bottom:10px">
             <div class="toggle-copy">
               <div class="toggle-title">Avtomatik yuborish</div>
-              <div class="toggle-desc">Yoqilgan bo'lsa, AI yaratgan post Review Queue'da kutmasdan DARHOL tasdiqlanadi (odam tekshiruvi yo'q). Kanalga chiqish vaqti baribir pastdagi "Chiqish oralig'i"ga bo'ysunadi.</div>
+              <div class="toggle-desc">Yoqilgan bo'lsa, AI yaratgan post Review Queue'da kutmasdan DARHOL tasdiqlanadi (odam tekshiruvi yo'q). Kanalga chiqish vaqti baribir "Scheduled" bo'limidagi chiqish oralig'iga bo'ysunadi.</div>
             </div>
             <label class="switch">
               <input type="checkbox" id="auto-publish-toggle" onchange="saveChannelSettings()">
               <span class="switch-slider"></span>
             </label>
           </div>
-          <span class="field-label">Chiqish oralig'i (daqiqa) — tasdiqlangan postlar orasidagi minimal vaqt. 0 = darhol chiqadi (eski xatti-harakat)</span>
-          <input type="text" id="publish-interval-minutes" placeholder="0" inputmode="numeric" style="margin-bottom:10px; max-width:120px">
           <span class="field-label">Kanal yorlig'i (postning oxiriga qo'shiladigan matn)</span>
           <input type="text" id="channel-tag" placeholder="@Inglizfutbol" style="margin-bottom:10px">
           <span class="field-label">Uslub (tone)</span>
@@ -656,7 +669,7 @@ STUDIO_HTML = """<!DOCTYPE html>
   const viewLoaded = {};
   let currentView = 'dashboard';
   const VIEW_TITLES = {
-    dashboard: 'Dashboard', queue: 'Review Queue', published: 'Published',
+    dashboard: 'Dashboard', queue: 'Review Queue', scheduled: 'Scheduled', published: 'Published',
     rejected: 'Rejected', sources: 'News Feed → Post', kb: 'Knowledge Base',
     studio: 'New Request', prompts: 'Prompts',
   };
@@ -676,6 +689,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
     if (!viewLoaded[name]) {
       viewLoaded[name] = true;
+      if (name === 'scheduled') loadScheduled();
       if (name === 'published') loadAssets('published', 'queue-published');
       if (name === 'rejected') loadAssets('rejected', 'queue-rejected');
       if (name === 'sources') loadSources();
@@ -721,6 +735,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       document.getElementById('lc-published').textContent = s.published_total ?? 0;
       document.getElementById('lc-rejected').textContent = s.rejected_total ?? 0;
       document.getElementById('nav-count-draft').textContent = s.pending_review ?? 0;
+      document.getElementById('nav-count-scheduled').textContent = s.scheduled_count ?? 0;
       document.getElementById('nav-count-published').textContent = s.published_total ?? 0;
       document.getElementById('nav-count-rejected').textContent = s.rejected_total ?? 0;
       document.getElementById('nav-count-sources').textContent = s.total_sources ?? 0;
@@ -830,6 +845,75 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
   }
 
+  async function loadScheduleInterval() {
+    try {
+      const res = await apiGet('/api/studio/config');
+      const cfg = await res.json();
+      document.getElementById('publish-interval-minutes').value = cfg.publish_interval_minutes || 0;
+    } catch (e) {
+      toast('Sozlama yuklanmadi');
+    }
+  }
+
+  async function saveScheduleInterval() {
+    const intervalRaw = document.getElementById('publish-interval-minutes').value.trim();
+    const publish_interval_minutes = intervalRaw === '' ? 0 : parseInt(intervalRaw, 10);
+    if (Number.isNaN(publish_interval_minutes) || publish_interval_minutes < 0) { toast("0 yoki musbat butun son bo'lishi kerak"); return; }
+    const res = await apiPost('/api/studio/config', { publish_interval_minutes });
+    const data = await res.json();
+    if (!res.ok) { toast(data.error || 'Xatolik'); return; }
+    toast('Saqlandi');
+    loadStats();
+  }
+
+  async function loadScheduled() {
+    loadScheduleInterval();
+    const el = document.getElementById('queue-scheduled');
+    try {
+      const res = await apiGet('/api/studio/assets?status=scheduled');
+      const items = await res.json();
+      items.forEach(a => assetCache[a.id] = a);
+      if (!items.length) {
+        el.innerHTML = '<div class="empty">Hozircha navbatda post yo\\'q.</div>';
+        return;
+      }
+      el.innerHTML = items.map(a => `
+        <div class="q-card" data-id="${a.id}">
+          <div class="q-card-main" style="cursor:pointer" onclick="openAsset(${a.id})">
+            <div class="q-title">${escapeHtml((a.title || '').slice(0, 90))}</div>
+            <div class="q-meta">
+              <span>${escapeHtml(assetTypeLabel(a.type))}</span>
+              <span>navbatga qo'yildi: ${fmtTime(a.scheduled_at)}</span>
+            </div>
+          </div>
+          <button class="btn btn-ghost" onclick="event.stopPropagation(); cancelScheduled(${a.id})">Bekor qilish</button>
+        </div>
+      `).join('');
+    } catch (e) {
+      el.innerHTML = '<div class="empty">Xatolik yuz berdi.</div>';
+    }
+  }
+
+  async function cancelScheduled(id) {
+    const ok = await showConfirmModal({
+      title: 'Navbatdan chiqarish',
+      message: "Bu post navbatdan chiqarilib, qaytadan Review Queue'ga qo'shiladi. Davom etasizmi?",
+      okLabel: 'Chiqarish',
+      okClass: 'btn-danger',
+    });
+    if (!ok) return;
+    try {
+      const res = await apiPost('/api/studio/assets/unschedule', { id });
+      const data = await res.json();
+      if (!res.ok) { toast(data.error || 'Xatolik'); return; }
+      toast("Navbatdan chiqarildi, Review Queue'ga qaytdi");
+      loadScheduled();
+      loadStats();
+    } catch (e) {
+      toast('Xatolik yuz berdi');
+    }
+  }
+
   let selectedQueueId = null;
 
   let rightpanelMode = 'empty';
@@ -920,6 +1004,7 @@ STUDIO_HTML = """<!DOCTYPE html>
   function refreshCurrentLists() {
     loadStats();
     if (currentView === 'queue') renderQueuePendingList();
+    if (viewLoaded['scheduled']) loadScheduled();
     if (viewLoaded['published']) loadAssets('published', 'queue-published');
     if (viewLoaded['rejected']) loadAssets('rejected', 'queue-rejected');
     loadActivityFeed();
@@ -1339,10 +1424,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     const tone = document.getElementById('tone-field').value.trim();
     const gemini_api_key = document.getElementById('gemini-api-key').value.trim();
     const auto_publish = document.getElementById('auto-publish-toggle').checked;
-    const intervalRaw = document.getElementById('publish-interval-minutes').value.trim();
-    const publish_interval_minutes = intervalRaw === '' ? 0 : parseInt(intervalRaw, 10);
-    if (Number.isNaN(publish_interval_minutes) || publish_interval_minutes < 0) { toast("Chiqish oralig'i 0 yoki musbat butun son bo'lishi kerak"); return; }
-    const res = await apiPost('/api/studio/config', { domain_description, channel_tag, telegram_channel_id, tone, gemini_api_key, auto_publish, publish_interval_minutes });
+    const res = await apiPost('/api/studio/config', { domain_description, channel_tag, telegram_channel_id, tone, gemini_api_key, auto_publish });
     const data = await res.json();
     if (!res.ok) { toast(data.error || 'Xatolik'); return; }
     toast('Saqlandi');
@@ -1364,7 +1446,6 @@ STUDIO_HTML = """<!DOCTYPE html>
       document.getElementById('telegram-channel-id').value = cfg.telegram_channel_id || '';
       document.getElementById('tone-field').value = cfg.tone || '';
       document.getElementById('auto-publish-toggle').checked = !!cfg.auto_publish;
-      document.getElementById('publish-interval-minutes').value = cfg.publish_interval_minutes || 0;
       const keyInput = document.getElementById('gemini-api-key');
       keyInput.value = '';
       keyInput.placeholder = cfg.gemini_api_key_set

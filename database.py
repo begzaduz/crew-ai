@@ -759,6 +759,21 @@ def schedule_asset(asset_id: int) -> None:
         _put_conn(conn)
 
 
+def unschedule_asset(asset_id: int) -> None:
+    """Navbatdan chiqarib, qaytadan Review Queue'ga (status='draft')
+    qo'yadi — admin 'Bekor qilish' bosganda ishlatiladi."""
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE assets SET status='draft', scheduled_at=NULL WHERE id=%s AND status='scheduled'",
+                (asset_id,),
+            )
+        conn.commit()
+    finally:
+        _put_conn(conn)
+
+
 def get_next_scheduled_asset(project_id: int) -> dict | None:
     """Loyihaning navbatdagi ENG ESKI (birinchi tasdiqlangan) postini
     qaytaradi — scheduler shuni chiqaradi. Navbat bo'sh bo'lsa None."""
