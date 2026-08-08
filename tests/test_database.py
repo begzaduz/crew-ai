@@ -133,6 +133,37 @@ class TestAssetLifecycle:
         assert cfg['tone'] == 'admin-changed-tone'
 
 
+class TestAssetUploads:
+    """Rasm yuklash — DB'da saqlash va o'qish roundtrip'i."""
+
+    def test_save_and_get_upload_roundtrip(self, clean_db):
+        p = database.get_or_create_project('upload-test', 'Upload Test')
+        raw = b'\\x89PNG\\r\\n fake bytes'
+        upload_id = database.save_upload(p['id'], 'image/png', raw)
+        row = database.get_upload(upload_id)
+        assert row['content_type'] == 'image/png'
+        assert bytes(row['data']) == raw
+
+    def test_get_upload_missing_returns_none(self, clean_db):
+        assert database.get_upload(999999) is None
+
+    def test_update_asset_image_sets_and_clears(self, clean_db):
+        p = database.get_or_create_project('img-asset-test', 'Img Asset Test')
+        asset = database.create_asset(
+            project_id=p['id'], source_url=None, asset_type='manual',
+            title='T', content='C' * 60, score=0,
+        )
+        database.update_asset_image(asset['id'], 'https://example.com/pic.jpg')
+        assert database.get_asset(asset['id'])['image_url'] == 'https://example.com/pic.jpg'
+        database.update_asset_image(asset['id'], None)
+        assert database.get_asset(asset['id'])['image_url'] is None
+
+    def test_delete_project_removes_uploads(self, clean_db):
+        p = database.get_or_create_project('upload-del-test', 'Upload Del Test')
+        database.save_upload(p['id'], 'image/png', b'x')
+        assert database.delete_project(p['id']) is True
+
+
 class TestDeleteProject:
     """Loyihani Dashboard'dan butunlay o'chirish — boshqa loyihalarga
     tegmasligi va bog'liq barcha ma'lumot (assets/sources/config/

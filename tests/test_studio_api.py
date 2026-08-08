@@ -5,6 +5,97 @@ import database
 import studio_api
 
 
+class TestImageUploadAndSearch:
+    def test_upload_image_rejects_bad_content_type(self, clean_db):
+        project = database.get_or_create_project('img-up-1', 'Img Up 1')
+        status, payload = studio_api.upload_image(project['id'], {
+            'content_type': 'application/pdf', 'image_base64': 'YQ==',
+        })
+        assert status == 400
+
+    def test_upload_image_rejects_missing_base64(self, clean_db):
+        project = database.get_or_create_project('img-up-2', 'Img Up 2')
+        status, payload = studio_api.upload_image(project['id'], {
+            'content_type': 'image/png', 'image_base64': '',
+        })
+        assert status == 400
+
+    def test_upload_image_rejects_invalid_base64(self, clean_db):
+        project = database.get_or_create_project('img-up-3', 'Img Up 3')
+        status, payload = studio_api.upload_image(project['id'], {
+            'content_type': 'image/png', 'image_base64': 'not-valid-base64!!!',
+        })
+        assert status == 400
+
+    def test_upload_image_success_returns_url(self, clean_db):
+        import base64
+        project = database.get_or_create_project('img-up-4', 'Img Up 4')
+        b64 = base64.b64encode(b'fake-png-bytes').decode()
+        with patch.object(studio_api, 'PUBLIC_BASE_URL', 'https://example.up.railway.app'):
+            status, payload = studio_api.upload_image(project['id'], {
+                'content_type': 'image/png', 'image_base64': b64,
+            })
+        assert status == 200
+        assert payload['url'] == f"https://example.up.railway.app/api/image/{payload['id']}"
+        stored = database.get_upload(payload['id'])
+        assert bytes(stored['data']) == b'fake-png-bytes'
+
+    def test_upload_image_strips_data_url_prefix(self, clean_db):
+        import base64
+        project = database.get_or_create_project('img-up-5', 'Img Up 5')
+        b64 = base64.b64encode(b'abc').decode()
+        status, payload = studio_api.upload_image(project['id'], {
+            'content_type': 'image/jpeg', 'image_base64': f'data:image/jpeg;base64,{b64}',
+        })
+        assert status == 200
+        assert bytes(database.get_upload(payload['id'])['data']) == b'abc'
+
+    def test_upload_image_rejects_too_large(self, clean_db):
+        import base64
+        project = database.get_or_create_project('img-up-6', 'Img Up 6')
+        big = base64.b64encode(b'x' * (studio_api._MAX_UPLOAD_BYTES + 1)).decode()
+        status, payload = studio_api.upload_image(project['id'], {
+            'content_type': 'image/png', 'image_base64': big,
+        })
+        assert status == 400
+
+    def test_search_images_requires_query(self, clean_db):
+        status, payload = studio_api.search_images_api(None, {'query': ''})
+        assert status == 400
+
+    def test_search_images_returns_503_when_not_configured(self, clean_db):
+        with patch.object(studio_api.image_search, 'is_configured', return_value=False):
+            status, payload = studio_api.search_images_api(None, {'query': 'arsenal'})
+        assert status == 503
+
+    def test_search_images_returns_results(self, clean_db):
+        fake_results = [{'url': 'https://x.com/a.jpg', 'thumbnail': 'https://x.com/t.jpg', 'title': 'A'}]
+        with patch.object(studio_api.image_search, 'is_configured', return_value=True), \
+             patch.object(studio_api.image_search, 'search_images', return_value=fake_results):
+            status, payload = studio_api.search_images_api(None, {'query': 'arsenal'})
+        assert status == 200
+        assert payload['results'] == fake_results
+
+    def test_set_asset_image_updates(self, clean_db):
+        project = database.get_or_create_project('img-set-1', 'Img Set 1')
+        asset = database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title='T', content='C' * 60, score=0,
+        )
+        status, payload = studio_api.set_asset_image({'id': asset['id'], 'image_url': 'https://x.com/pic.jpg'})
+        assert status == 200
+        assert database.get_asset(asset['id'])['image_url'] == 'https://x.com/pic.jpg'
+
+    def test_submit_manual_content_accepts_image_url(self, clean_db):
+        project = database.get_or_create_project('img-submit-1', 'Img Submit 1')
+        with patch('workflows.rss_news.generate_post', return_value='Post matni ' * 10):
+            status, payload = studio_api.submit_manual_content(project['id'], {
+                'text': 'Xom matn', 'image_url': 'https://x.com/pic.jpg',
+            })
+        assert status == 200
+        assert payload['image_url'] == 'https://x.com/pic.jpg'
+
+
 class TestCreateProject:
     def test_generates_slug_from_name(self, clean_db):
         status, payload = studio_api.create_project(None, {'name': "Toy Company O'zbekiston"})

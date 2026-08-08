@@ -208,6 +208,25 @@ def init_db() -> None:
             cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS decision TEXT NOT NULL DEFAULT 'approved'")
             cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS notes TEXT")
             cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ DEFAULT NOW()")
+
+            # Dashboard'dan qo'lda yuklangan rasmlar (New Request / Review
+            # Queue'dagi "Rasm yuklash"). Tashqi fayl hosting kerak emas —
+            # rasm baytlari to'g'ridan-to'g'ri shu yerda saqlanadi, va
+            # /api/image/<id> orqali oddiy HTTP URL sifatida ochiladi
+            # (bu URL keyin assets.image_url'ga xuddi boshqa har qanday
+            # URL kabi yoziladi — pipeline/Telegram/Mini App uchun farqi
+            # yo'q). Internetdan (Google qidiruv) tanlangan rasmlar bu
+            # jadvalga tushmaydi — ularning URL'i tashqi va allaqachon
+            # barqaror, to'g'ridan-to'g'ri ishlatiladi.
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS asset_uploads (
+                    id SERIAL PRIMARY KEY,
+                    project_id INTEGER,
+                    content_type TEXT NOT NULL,
+                    data BYTEA NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            ''')
         conn.commit()
         log.info('[DB] PostgreSQL jadval tayyor.')
     finally:
@@ -848,6 +867,7 @@ def delete_project(project_id: int) -> bool:
                 (project_id,),
             )
             cur.execute('DELETE FROM assets WHERE project_id=%s', (project_id,))
+            cur.execute('DELETE FROM asset_uploads WHERE project_id=%s', (project_id,))
             cur.execute('DELETE FROM data_sources WHERE project_id=%s', (project_id,))
             cur.execute('DELETE FROM workflows WHERE project_id=%s', (project_id,))
             cur.execute('DELETE FROM published_posts WHERE project_id=%s', (project_id,))
@@ -856,5 +876,50 @@ def delete_project(project_id: int) -> bool:
         conn.commit()
         log.info(f'[DB] Loyiha butunlay o\'chirildi (project_id={project_id}).')
         return True
+    finally:
+        _put_conn(conn)
+
+
+# ── Studio Lab: yuklangan rasmlar (Dashboard "Rasm yuklash") ──────
+def save_upload(project_id: int, content_type: str, data: bytes) -> int:
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                '''INSERT INTO asset_uploads (project_id, content_type, data)
+                   VALUES (%s, %s, %s) RETURNING id''',
+                (project_id, content_type, psycopg2.Binary(data)),
+            )
+            upload_id = cur.fetchone()[0]
+        conn.commit()
+        return upload_id
+    finally:
+        _put_conn(conn)
+
+
+def get_upload(upload_id: int) -> dict | None:
+    conn = _get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                'SELECT content_type, data FROM asset_uploads WHERE id=%s',
+                (upload_id,),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+    finally:
+        _put_conn(conn)
+
+
+def update_asset_image(asset_id: int, image_url: str | None) -> None:
+    """Review Queue'da mavjud draft'ning rasmini almashtirish/o'rnatish
+    uchun (New Request'da esa asset yaratilishidan OLDIN image_url
+    to'g'ridan-to'g'ri create_asset()ga beriladi, bu funksiya kerak
+    emas)."""
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute('UPDATE assets SET image_url=%s WHERE id=%s', (image_url, asset_id))
+        conn.commit()
     finally:
         _put_conn(conn)

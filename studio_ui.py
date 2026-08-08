@@ -240,6 +240,15 @@ STUDIO_HTML = """<!DOCTYPE html>
   .rp-section{ margin-bottom:12px; }
   .rp-label{ font-size:9.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--text-faint); font-weight:600; margin-bottom:6px; }
   .rp-img{ width:100%; height:100px; border-radius:var(--radius-sm); background:var(--surface) center/cover no-repeat; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--text-faint); font-size:11px; }
+
+  .img-picker{ margin-bottom:14px; }
+  .img-picker-preview{ width:100%; max-width:420px; height:160px; border-radius:var(--radius); background:var(--surface-2) center/cover no-repeat; border:1px solid var(--border); margin-bottom:8px; display:flex; align-items:center; justify-content:center; color:var(--text-faint); font-size:12px; }
+  .img-picker-actions{ display:flex; gap:7px; flex-wrap:wrap; }
+  .btn-file-label{ display:inline-flex; align-items:center; }
+  .img-search-box{ max-width:420px; }
+  .img-search-results{ display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-top:8px; }
+  .img-search-thumb{ width:100%; aspect-ratio:1; border-radius:var(--radius-sm); background:var(--surface-2) center/cover no-repeat; border:1px solid var(--border); cursor:pointer; }
+  .img-search-thumb:hover{ border-color:var(--gold); }
   .rp-actions{ display:flex; gap:7px; margin-top:12px; }
   .rp-actions .btn{ flex:1; padding:8px 0; text-align:center; }
   .rp-link{ color:var(--gold); font-size:11px; text-decoration:none; }
@@ -387,6 +396,7 @@ STUDIO_HTML = """<!DOCTYPE html>
         </div>
         <div class="subtitle">Har qanday tildagi xom matn — AI tarjima qilib, formatga soladi</div>
         <textarea id="manual-text" placeholder="Matnni shu yerga joylang..."></textarea>
+        <div id="newreq-image-picker-slot" style="margin-top:12px"></div>
         <div class="studio-actions">
           <div class="ai-steps"><span>Tarjima</span><span>Faktlarni ajratish</span><span>Kanal formati</span><span>Sarlavha</span><span>Emoji</span></div>
           <button class="btn btn-gold" id="manual-submit-btn" onclick="submitManual()">Generate Draft</button>
@@ -892,13 +902,22 @@ STUDIO_HTML = """<!DOCTYPE html>
     document.getElementById('queue-detail').innerHTML = `
       <div class="qd-title">${escapeHtml(a.title || '')}</div>
       <div class="qd-meta">${escapeHtml(assetTypeLabel(a.type))} · ${fmtTime(a.created_at)}${a.source_url ? ' · <a class="rp-link" href="' + escapeAttr(a.source_url) + '" target="_blank">manba</a>' : ''}</div>
-      ${a.image_url ? `<div class="qd-img" style="background-image:url('${escapeAttr(a.image_url)}')"></div>` : ''}
+      <div id="queueimg-picker-slot"></div>
       <textarea id="qd-content" class="qd-textarea">${escapeHtml(a.content || '')}</textarea>
       <div class="qd-actions">
         <button class="btn btn-green" onclick="approveAsset(${a.id})">Tasdiqlash</button>
         <button class="btn btn-danger" onclick="rejectAsset(${a.id})">Rad</button>
       </div>
     `;
+    document.getElementById('queueimg-picker-slot').innerHTML = imagePickerHTML('queueimg', a.image_url);
+    initImagePickerState('queueimg', a.image_url, (url) => {
+      apiPost('/api/studio/assets/set_image', { id: a.id, image_url: url }).then(async res => {
+        const data = await res.json();
+        if (!res.ok) { toast(data.error || "Rasmni saqlashda xatolik"); return; }
+        a.image_url = url;
+        assetCache[a.id] = a;
+      });
+    });
     closeMobileRightpanel();
   }
 
@@ -1005,18 +1024,151 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
   }
 
+  // ── Rasm tanlash (yuklash / Google'dan qidirish) — New Request va
+  // Review Queue'da bir xil komponent, faqat prefix orqali farqlanadi ──
+  const imagePickerState = {};
+
+  function imagePickerHTML(prefix, currentUrl) {
+    const hasImg = !!currentUrl;
+    return `
+      <div class="img-picker">
+        <div class="rp-label">Rasm</div>
+        <div class="img-picker-preview" id="${prefix}-preview" style="${hasImg ? `background-image:url('${escapeAttr(currentUrl)}')` : ''}">${hasImg ? '' : "Rasm yo'q"}</div>
+        <div class="img-picker-actions">
+          <label class="btn btn-ghost btn-file-label">Yuklash<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" id="${prefix}-file" style="display:none" onchange="handleImageFileChange('${prefix}')"></label>
+          <button class="btn btn-ghost" type="button" onclick="toggleImageSearchBox('${prefix}')">Google'da qidirish</button>
+          <button class="btn btn-danger" type="button" id="${prefix}-clear-btn" style="${hasImg ? '' : 'display:none'}" onclick="clearPickedImage('${prefix}')">Olib tashlash</button>
+        </div>
+        <div class="img-search-box" id="${prefix}-search-box" style="display:none">
+          <div style="display:flex; gap:6px; margin-top:8px">
+            <input type="text" id="${prefix}-search-input" placeholder="masalan: Arsenal stadium" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault(); runImageSearch('${prefix}');}">
+            <button class="btn btn-gold" type="button" onclick="runImageSearch('${prefix}')">Qidirish</button>
+          </div>
+          <div class="img-search-results" id="${prefix}-search-results"></div>
+        </div>
+      </div>
+    `;
+  }
+
+  function initImagePickerState(prefix, currentUrl, onChange) {
+    imagePickerState[prefix] = { url: currentUrl || null, onChange: onChange || null, searchResults: [] };
+  }
+
+  function setPickedImage(prefix, url) {
+    const state = imagePickerState[prefix];
+    if (!state) return;
+    state.url = url || null;
+    const preview = document.getElementById(`${prefix}-preview`);
+    const clearBtn = document.getElementById(`${prefix}-clear-btn`);
+    if (preview) {
+      if (url) {
+        preview.style.backgroundImage = `url('${url}')`;
+        preview.textContent = '';
+      } else {
+        preview.style.backgroundImage = '';
+        preview.textContent = "Rasm yo'q";
+      }
+    }
+    if (clearBtn) clearBtn.style.display = url ? '' : 'none';
+    if (state.onChange) state.onChange(state.url);
+  }
+
+  function clearPickedImage(prefix) {
+    setPickedImage(prefix, null);
+  }
+
+  function getPickedImage(prefix) {
+    const state = imagePickerState[prefix];
+    return state ? state.url : null;
+  }
+
+  function toggleImageSearchBox(prefix) {
+    const box = document.getElementById(`${prefix}-search-box`);
+    if (!box) return;
+    const showing = box.style.display !== 'none';
+    box.style.display = showing ? 'none' : 'block';
+    if (!showing) {
+      const input = document.getElementById(`${prefix}-search-input`);
+      if (input) input.focus();
+    }
+  }
+
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleImageFileChange(prefix) {
+    const fileInput = document.getElementById(`${prefix}-file`);
+    const file = fileInput && fileInput.files && fileInput.files[0];
+    if (!file) return;
+    const allowed = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    if (!allowed.includes(file.type)) { toast('Faqat PNG/JPEG/WEBP/GIF qabul qilinadi'); fileInput.value = ''; return; }
+    if (file.size > 6000000) { toast("Rasm juda katta (max 6MB)"); fileInput.value = ''; return; }
+    toast('Yuklanmoqda...');
+    try {
+      const b64 = await fileToBase64(file);
+      const res = await apiPost('/api/studio/images/upload', { content_type: file.type, image_base64: b64 });
+      const data = await res.json();
+      if (!res.ok) { toast(data.error || 'Yuklashda xatolik'); return; }
+      setPickedImage(prefix, data.url);
+      toast('Rasm yuklandi ✅');
+    } catch (e) {
+      toast('Yuklashda xatolik: ' + e.message);
+    } finally {
+      fileInput.value = '';
+    }
+  }
+
+  async function runImageSearch(prefix) {
+    const input = document.getElementById(`${prefix}-search-input`);
+    const query = input ? input.value.trim() : '';
+    if (!query) return;
+    const resultsEl = document.getElementById(`${prefix}-search-results`);
+    resultsEl.innerHTML = '<div class="empty" style="padding:8px 0">Qidirilmoqda...</div>';
+    try {
+      const res = await apiPost('/api/studio/images/search', { query });
+      const data = await res.json();
+      if (!res.ok) { resultsEl.innerHTML = `<div class="empty" style="padding:8px 0">${escapeHtml(data.error || 'Xatolik')}</div>`; return; }
+      const results = data.results || [];
+      if (!results.length) { resultsEl.innerHTML = '<div class="empty" style="padding:8px 0">Hech narsa topilmadi</div>'; return; }
+      imagePickerState[prefix].searchResults = results;
+      resultsEl.innerHTML = results.map((r, i) => `
+        <div class="img-search-thumb" style="background-image:url('${escapeAttr(r.thumbnail)}')" onclick="pickSearchImage('${prefix}', ${i})" title="${escapeAttr(r.title || '')}"></div>
+      `).join('');
+    } catch (e) {
+      resultsEl.innerHTML = '<div class="empty" style="padding:8px 0">Tarmoq xatosi</div>';
+    }
+  }
+
+  function pickSearchImage(prefix, index) {
+    const state = imagePickerState[prefix];
+    const r = state && state.searchResults && state.searchResults[index];
+    if (!r) return;
+    setPickedImage(prefix, r.url);
+    const box = document.getElementById(`${prefix}-search-box`);
+    if (box) box.style.display = 'none';
+    toast('Rasm tanlandi');
+  }
+
   async function submitManual() {
     const textEl = document.getElementById('manual-text');
     const btn = document.getElementById('manual-submit-btn');
     const text = textEl.value.trim();
     if (!text) return;
+    const image_url = getPickedImage('newreq');
     btn.disabled = true;
     btn.textContent = 'Ishlanmoqda...';
     try {
-      const res = await apiPost('/api/studio/assets/submit', { text });
+      const res = await apiPost('/api/studio/assets/submit', { text, image_url });
       const data = await res.json();
       if (!res.ok) { toast(data.error || 'Xatolik'); return; }
       textEl.value = '';
+      setPickedImage('newreq', null);
       toast('Review Queue-ga qo\\'shildi');
       switchView('queue');
       refreshCurrentLists();
@@ -1448,6 +1600,8 @@ STUDIO_HTML = """<!DOCTYPE html>
   }
 
   (async () => {
+    document.getElementById('newreq-image-picker-slot').innerHTML = imagePickerHTML('newreq', null);
+    initImagePickerState('newreq', null, null);
     await initProjects();
     loadStats();
     loadActivityFeed();

@@ -366,6 +366,11 @@ class WebhookHandler(BaseHTTPRequestHandler):
     # foydalanishga xalaqit bermaydi.
     MAX_BODY_SIZE = 2_000_000
 
+    # Rasm yuklash (base64) — dekodlanmagan JSON payload ~33% kattaroq
+    # bo'ladi, shuning uchun oddiy limitdan yuqoriroq kerak. Faqat shu
+    # bitta route uchun (auth baribir avval tekshiriladi, DoS xavfi yo'q).
+    IMAGE_UPLOAD_MAX_BODY_SIZE = 9_000_000
+
     def _json(self, data, status: int = 200, cors: bool = False) -> None:
         body = json.dumps(data, default=str, ensure_ascii=False).encode('utf-8')
         self.send_response(status)
@@ -382,13 +387,15 @@ class WebhookHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _read_body_or_413(self) -> bytes | None:
-        """Content-Length'ni MAX_BODY_SIZE bilan solishtiradi va faqat
-        chegaradan oshmasa body'ni o'qib qaytaradi. Oshsa, body UMUMAN
-        o'qilmaydi (xotira band qilinmaydi) va 413 qaytariladi — chaqiruvchi
-        None qaytgan holatda darhol return qilishi kerak."""
+    def _read_body_or_413(self, max_size: int | None = None) -> bytes | None:
+        """Content-Length'ni max_size (berilmasa MAX_BODY_SIZE) bilan
+        solishtiradi va faqat chegaradan oshmasa body'ni o'qib qaytaradi.
+        Oshsa, body UMUMAN o'qilmaydi (xotira band qilinmaydi) va 413
+        qaytariladi — chaqiruvchi None qaytgan holatda darhol return
+        qilishi kerak."""
+        limit = max_size if max_size is not None else self.MAX_BODY_SIZE
         length = int(self.headers.get('Content-Length', 0))
-        if length > self.MAX_BODY_SIZE:
+        if length > limit:
             self.send_response(413)
             self.send_header('Content-Type', 'text/plain; charset=utf-8')
             self.end_headers()
@@ -417,7 +424,8 @@ class WebhookHandler(BaseHTTPRequestHandler):
             if not _check_dashboard_auth(self.headers):
                 self._deny_dashboard_auth()
                 return
-            body = self._read_body_or_413()
+            body_limit = self.IMAGE_UPLOAD_MAX_BODY_SIZE if path == '/api/studio/images/upload' else None
+            body = self._read_body_or_413(body_limit)
             if body is None:
                 return
             try:
@@ -456,6 +464,29 @@ class WebhookHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+        # ── Dashboard'dan yuklangan rasmlar (ochiq, autentifikatsiyasiz —
+        # Telegram va Mini App ham shu URL'ga ulanishi kerak, ular
+        # Basic Auth header yubormaydi) ──────────────────────────────
+        if path.startswith('/api/image/'):
+            id_part = path[len('/api/image/'):]
+            if not id_part.isdigit():
+                self.send_response(404)
+                self.end_headers()
+                return
+            upload = database.get_upload(int(id_part))
+            if not upload:
+                self.send_response(404)
+                self.end_headers()
+                return
+            data = bytes(upload['data'])
+            self.send_response(200)
+            self.send_header('Content-Type', upload['content_type'])
+            self.send_header('Content-Length', str(len(data)))
+            self.send_header('Cache-Control', 'public, max-age=31536000, immutable')
+            self.end_headers()
+            self.wfile.write(data)
+            return
 
         # ── Studio Dashboard API (o'qish) ──────────────────────────────
         if path in studio_api.GET_ROUTES:
