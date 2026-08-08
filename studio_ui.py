@@ -283,20 +283,16 @@ STUDIO_HTML = """<!DOCTYPE html>
       </div>
       <div class="group">
         <div class="group-label">Create</div>
-        <div class="nav-item" data-view="studio" onclick="switchView('studio')">Text Post</div>
-        <div class="nav-item disabled" title="Tez orada">Instagram Post</div>
-        <div class="nav-item disabled" title="Tez orada">Reel</div>
-        <div class="nav-item disabled" title="Tez orada">Article</div>
-        <div class="nav-item disabled" title="Tez orada">Banner</div>
+        <div class="nav-item" data-view="studio" onclick="switchView('studio')">+ New Request</div>
       </div>
       <div class="group">
-        <div class="group-label">Automation</div>
-        <div class="nav-item" data-view="sources" onclick="switchView('sources')">RSS &rarr; Post <span class="count" id="nav-count-sources">0</span></div>
-        <div class="nav-item disabled" title="Tez orada">X &rarr; Telegram</div>
-        <div class="nav-item disabled" title="Tez orada">Scheduled Jobs</div>
+        <div class="group-label">Workflows</div>
+        <div class="nav-item" data-view="sources" onclick="switchView('sources')">News Feed &rarr; Post <span class="count" id="nav-count-sources">0</span></div>
+        <div class="nav-item disabled" title="Tez orada">Twitter &rarr; Telegram</div>
+        <div class="nav-item disabled" title="Tez orada">Scheduled Posts</div>
       </div>
       <div class="group">
-        <div class="group-label">Deliveries</div>
+        <div class="group-label">Pipeline</div>
         <div class="nav-item" data-view="queue" onclick="switchView('queue')">Review Queue <span class="count" id="nav-count-draft">0</span></div>
         <div class="nav-item" data-view="published" onclick="switchView('published')">Published <span class="count" id="nav-count-published">0</span></div>
         <div class="nav-item" data-view="rejected" onclick="switchView('rejected')">Rejected <span class="count" id="nav-count-rejected">0</span></div>
@@ -375,7 +371,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     </div>
 
     <div class="view" id="view-studio">
-      <div class="page-head"><h1>AI Content Studio</h1><p>Paste text, article, quote or URL. Studio Lab will transform it into a publication-ready post.</p></div>
+      <div class="page-head"><h1>New Request</h1><p>Paste text, article, quote or URL. Studio Lab will transform it into a publication-ready post.</p></div>
       <div class="studio-card">
         <div class="input-tabs">
           <div class="input-tab active">Raw Text</div>
@@ -392,7 +388,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     </div>
 
     <div class="view" id="view-sources">
-      <div class="page-head"><h1>Sources · RSS</h1><p>Studio Lab AI shu manbalardan yangiliklarni oladi. Ustuvorlik (priority) yuqori bo'lgan manba birinchi tekshiriladi.</p></div>
+      <div class="page-head"><h1>News Feed &rarr; Post</h1><p>Studio Lab AI shu manbalardan yangiliklarni oladi. Ustuvorlik (priority) yuqori bo'lgan manba birinchi tekshiriladi.</p></div>
       <div id="sources-list"><div class="empty">Yuklanmoqda...</div></div>
       <div class="add-source-row">
         <input type="text" id="new-source-url" placeholder="https://example.com/rss">
@@ -646,8 +642,8 @@ STUDIO_HTML = """<!DOCTYPE html>
   let currentView = 'dashboard';
   const VIEW_TITLES = {
     dashboard: 'Dashboard', queue: 'Review Queue', published: 'Published',
-    rejected: 'Rejected', sources: 'RSS Sources', kb: 'Knowledge Base',
-    studio: 'AI Content Studio', prompts: 'Prompts',
+    rejected: 'Rejected', sources: 'News Feed → Post', kb: 'Knowledge Base',
+    studio: 'New Request', prompts: 'Prompts',
   };
 
   function switchView(name) {
