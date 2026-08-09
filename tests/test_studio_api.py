@@ -331,6 +331,9 @@ class TestListAssetsSelfHeal:
         status, payload = studio_api.list_assets(project['id'], {'status': 'draft'})
         cleaned = next(a for a in payload if a['id'] == asset['id'])
         assert cleaned['content'] == 'Toza matn, hech qanday teg yoq.'
+
+
+class TestUpdateConfig:
     def test_rejects_unknown_keys_only(self, clean_db):
         project = database.get_or_create_project('cfg-test', 'Config Test')
         status, payload = studio_api.update_config(project['id'], {'totally_unknown_key': 'x'})
@@ -351,3 +354,31 @@ class TestListAssetsSelfHeal:
             'telegram_channel_id': '@Test',
         })
         assert status == 200
+
+
+class TestSubmitManualContentApiCallAccounting:
+    """MUHIM: create_asset() xato bersa ham, generate_post() muvaffaqiyatli
+    tugagan bo'lsa, increment_api_calls() FAQAT BITTA marta chaqirilishi
+    kerak — chunki haqiqatda faqat bitta Gemini chaqiruvi sodir bo'ldi."""
+
+    def test_does_not_double_count_when_create_asset_fails_after_generate_post(self, clean_db):
+        project = database.get_or_create_project('acct-test', 'Acct Test')
+        with patch('workflows.rss_news.generate_post', return_value='Post matni ' * 10), \
+             patch.object(database, 'create_asset', side_effect=RuntimeError('db boom')):
+            status, payload = studio_api.submit_manual_content(project['id'], {'text': 'Xom matn'})
+        assert status == 500
+        assert database.get_today_api_calls(project['id']) == studio_api.CALLS_PER_POST
+
+    def test_counts_once_on_generate_post_failure(self, clean_db):
+        project = database.get_or_create_project('acct-test2', 'Acct Test 2')
+        with patch('workflows.rss_news.generate_post', side_effect=RuntimeError('gemini boom')):
+            status, payload = studio_api.submit_manual_content(project['id'], {'text': 'Xom matn'})
+        assert status == 500
+        assert database.get_today_api_calls(project['id']) == studio_api.CALLS_PER_POST
+
+    def test_counts_once_on_success(self, clean_db):
+        project = database.get_or_create_project('acct-test3', 'Acct Test 3')
+        with patch('workflows.rss_news.generate_post', return_value='Post matni ' * 10):
+            status, payload = studio_api.submit_manual_content(project['id'], {'text': 'Xom matn'})
+        assert status == 200
+        assert database.get_today_api_calls(project['id']) == studio_api.CALLS_PER_POST

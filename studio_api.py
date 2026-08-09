@@ -459,11 +459,24 @@ def submit_manual_content(project_id: int, data: dict) -> tuple[int, object]:
     if used >= DAILY_API_LIMIT:
         return 429, {'error': f"Kunlik API byudjeti tugagan ({used}/{DAILY_API_LIMIT})"}
 
+    # MUHIM: increment_api_calls() FAQAT BITTA marta chaqiriladi — generate_post()
+    # muvaffaqiyatli tugagach (Gemini API haqiqatan chaqirilgan bo'lsa). Avval bu
+    # bitta try/except ichida edi va agar generate_post() muvaffaqiyatli tugab,
+    # keyin create_asset() (masalan DB xatosi) muvaffaqiyatsiz bo'lsa, kvota
+    # IKKI marta oshirilardi (bitta haqiqiy Gemini chaqiruvi uchun) — bu yerda
+    # ikkita alohida try/except bilan bunday qayta hisoblash oldini olinadi.
     try:
         from workflows.rss_news import generate_post
         article = {'title': text[:120], 'description': '', 'url': None, 'score': 100}
         post = generate_post(article, project_id)
+    except Exception as e:
         database.increment_api_calls(project_id, CALLS_PER_POST)
+        log.error(f'[StudioAPI] submit_manual_content (generate_post): {e}')
+        return 500, {'error': str(e)}
+
+    database.increment_api_calls(project_id, CALLS_PER_POST)
+
+    try:
         asset = database.create_asset(
             project_id=project_id,
             source_url=None,
@@ -473,12 +486,12 @@ def submit_manual_content(project_id: int, data: dict) -> tuple[int, object]:
             score=100,
             image_url=image_url,
         )
-        log.info(f'[StudioAPI] Qo\'lda kiritilgan kontent Review Queue-ga qo\'shildi (asset #{asset["id"]}).')
-        return 200, asset
     except Exception as e:
-        database.increment_api_calls(project_id, CALLS_PER_POST)
-        log.error(f'[StudioAPI] submit_manual_content: {e}')
+        log.error(f'[StudioAPI] submit_manual_content (create_asset): {e}')
         return 500, {'error': str(e)}
+
+    log.info(f'[StudioAPI] Qo\'lda kiritilgan kontent Review Queue-ga qo\'shildi (asset #{asset["id"]}).')
+    return 200, asset
 
 
 # ── Loyihalar (CaaS: bitta Dashboard — ko'p loyiha) ────────────────

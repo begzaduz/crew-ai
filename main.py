@@ -308,12 +308,25 @@ def handle_update(update: dict) -> None:
                 tg_send(chat_id, f'⛔ Bugungi API byudjeti tugadi ({used}/{limit}). Ertaga (Pacific vaqti bo\'yicha) tiklanadi.')
                 return
             tg_send(chat_id, '⏳ 3 agent ishlayapti (tarjima + formatlash)...')
+            # MUHIM: increment_api_calls() FAQAT BITTA marta chaqiriladi —
+            # generate_post() muvaffaqiyatli tugagach. Avval bu bitta try/except
+            # ichida edi va agar generate_post() muvaffaqiyatli tugab, keyin
+            # create_asset() (masalan DB xatosi) muvaffaqiyatsiz bo'lsa, kvota
+            # IKKI marta oshirilardi (bitta haqiqiy Gemini chaqiruvi uchun).
             try:
                 # Matn boshqa tilda bo'lishi ham mumkin — pipeline avtomatik
                 # o'zbek tiliga tarjima qilib, kanalga mos formatga soladi.
                 article = {'title': text, 'description': '', 'url': None, 'score': 100}
                 post = generate_post(article, PROJECT_ID)
+            except Exception as e:
                 increment_api_calls(PROJECT_ID, CALLS_PER_POST)
+                log.error(f'[Bot] Post yaratish xatosi (generate_post): {e}')
+                tg_send(chat_id, f'❌ Xatolik: {e}')
+                return
+
+            increment_api_calls(PROJECT_ID, CALLS_PER_POST)
+
+            try:
                 # MUHIM: bu yerda kanalga to'g'ridan-to'g'ri yubormaymiz —
                 # Review Queue'ga qo'shamiz, faqat Dashboard'da tasdiqlangandan
                 # keyin kanalga ketadi.
@@ -321,11 +334,12 @@ def handle_update(update: dict) -> None:
                     project_id=PROJECT_ID, source_url=None, asset_type='manual',
                     title=text[:80], content=post, score=100, image_url=None,
                 )
-                tg_send(chat_id, f'✅ Review Queue-ga qo\'shildi. Tasdiqlash uchun Dashboard: /studio\n\n{post}')
             except Exception as e:
-                increment_api_calls(PROJECT_ID, CALLS_PER_POST)
-                log.error(f'[Bot] Post yaratish xatosi: {e}')
+                log.error(f'[Bot] Post yaratish xatosi (create_asset): {e}')
                 tg_send(chat_id, f'❌ Xatolik: {e}')
+                return
+
+            tg_send(chat_id, f'✅ Review Queue-ga qo\'shildi. Tasdiqlash uchun Dashboard: /studio\n\n{post}')
 
     except Exception as e:
         log.error(f'[Bot] handle_update kutilmagan xato: {e}')
