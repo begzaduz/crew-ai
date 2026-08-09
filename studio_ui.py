@@ -319,7 +319,6 @@ STUDIO_HTML = """<!DOCTYPE html>
       <div class="page-head" style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
         <div><h1>Dashboard</h1><p id="dashboard-subtitle">AI-Powered Creative Operations</p></div>
         <div id="status-badge" style="display:flex; align-items:center; gap:8px; font-size:11px; color:var(--text-faint); white-space:nowrap; padding-top:2px;">
-          <span class="tag draft" id="auto-publish-badge" style="display:none">AVTO YUBORISH</span>
           <span class="status-dot" id="status-dot-2"></span><span id="status-badge-text">—</span>
         </div>
       </div>
@@ -382,7 +381,7 @@ STUDIO_HTML = """<!DOCTYPE html>
           <input type="text" id="publish-interval-minutes" placeholder="0" inputmode="numeric" style="max-width:120px">
           <button class="btn btn-gold" onclick="saveScheduleInterval()">Saqlash</button>
         </div>
-        <div style="font-size:10.5px; color:var(--text-faint); margin-top:6px">Masalan 60 — har soatda bitta post chiqadi. Bu sozlama "Avtomatik yuborish" yoqilgan bo'lsa ham amal qiladi.</div>
+        <div style="font-size:10.5px; color:var(--text-faint); margin-top:6px">Masalan 60 — har soatda bitta post chiqadi. Faqat Review Queue'da TASDIQLANGAN postlar shu navbatga tushadi.</div>
       </div>
       <div class="queue-grid" id="queue-scheduled"><div class="empty">Yuklanmoqda...</div></div>
     </div>
@@ -435,17 +434,7 @@ STUDIO_HTML = """<!DOCTYPE html>
           <span class="field-label">Soha tavsifi (AI shu sohaning tahlilchisi/muharriri sifatida yozadi)</span>
           <input type="text" id="domain-description" placeholder="masalan: Premier League football" style="margin-bottom:10px">
           <span class="field-label">Telegram kanali (haqiqiy yuborish manzili — masalan @KanalNomi yoki -100...)</span>
-          <input type="text" id="telegram-channel-id" placeholder="@Inglizfutbol" style="margin-bottom:6px">
-          <div class="toggle-row" style="border-bottom:1px solid var(--border); margin-bottom:10px">
-            <div class="toggle-copy">
-              <div class="toggle-title">Avtomatik yuborish</div>
-              <div class="toggle-desc">Yoqilgan bo'lsa, AI yaratgan post Review Queue'da kutmasdan DARHOL tasdiqlanadi (odam tekshiruvi yo'q). Kanalga chiqish vaqti baribir "Scheduled" bo'limidagi chiqish oralig'iga bo'ysunadi.</div>
-            </div>
-            <label class="switch">
-              <input type="checkbox" id="auto-publish-toggle" onchange="saveChannelSettings()">
-              <span class="switch-slider"></span>
-            </label>
-          </div>
+          <input type="text" id="telegram-channel-id" placeholder="@Inglizfutbol" style="margin-bottom:10px">
           <span class="field-label">Kanal yorlig'i (postning oxiriga qo'shiladigan matn)</span>
           <input type="text" id="channel-tag" placeholder="@Inglizfutbol" style="margin-bottom:10px">
           <span class="field-label">Uslub (tone)</span>
@@ -739,8 +728,6 @@ STUDIO_HTML = """<!DOCTYPE html>
       document.getElementById('nav-count-published').textContent = s.published_total ?? 0;
       document.getElementById('nav-count-rejected').textContent = s.rejected_total ?? 0;
       document.getElementById('nav-count-sources').textContent = s.total_sources ?? 0;
-      const autoBadge = document.getElementById('auto-publish-badge');
-      if (autoBadge) autoBadge.style.display = s.auto_publish ? 'inline-block' : 'none';
 
       const dot = document.getElementById('status-dot');
       const dot2 = document.getElementById('status-dot-2');
@@ -1423,8 +1410,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     const telegram_channel_id = document.getElementById('telegram-channel-id').value.trim();
     const tone = document.getElementById('tone-field').value.trim();
     const gemini_api_key = document.getElementById('gemini-api-key').value.trim();
-    const auto_publish = document.getElementById('auto-publish-toggle').checked;
-    const res = await apiPost('/api/studio/config', { domain_description, channel_tag, telegram_channel_id, tone, gemini_api_key, auto_publish });
+    const res = await apiPost('/api/studio/config', { domain_description, channel_tag, telegram_channel_id, tone, gemini_api_key });
     const data = await res.json();
     if (!res.ok) { toast(data.error || 'Xatolik'); return; }
     toast('Saqlandi');
@@ -1445,7 +1431,6 @@ STUDIO_HTML = """<!DOCTYPE html>
       document.getElementById('channel-tag').value = cfg.channel_tag || '';
       document.getElementById('telegram-channel-id').value = cfg.telegram_channel_id || '';
       document.getElementById('tone-field').value = cfg.tone || '';
-      document.getElementById('auto-publish-toggle').checked = !!cfg.auto_publish;
       const keyInput = document.getElementById('gemini-api-key');
       keyInput.value = '';
       keyInput.placeholder = cfg.gemini_api_key_set

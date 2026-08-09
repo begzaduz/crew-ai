@@ -189,9 +189,9 @@ def init_db() -> None:
             cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()")
             cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS image_url TEXT")
             cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ")
-            # Rejalashtirilgan chiqish uchun: admin tasdiqlagan (yoki
-            # auto_publish orqali avtomatik tasdiqlangan) post, lekin
-            # loyihada publish_interval_minutes > 0 bo'lsa, DARHOL
+            # Rejalashtirilgan chiqish uchun: admin Review Queue'da
+            # tasdiqlagan post, lekin loyihada publish_interval_minutes
+            # > 0 bo'lsa, DARHOL
             # kanalga yubormasdan, shu vaqt belgisi bilan navbatga
             # qo'yiladi (status='scheduled'). Background scheduler shu
             # ustun bo'yicha FIFO tartibda (eng eski tasdiqlangan
