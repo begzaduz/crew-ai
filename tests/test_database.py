@@ -217,3 +217,172 @@ class TestPublishedPostsProjectIsolation:
 
         assert len(posts_a) == 1 and posts_a[0]['title'] == 'A xabari'
         assert len(posts_b) == 1 and posts_b[0]['title'] == 'B xabari'
+
+
+def _set_timestamp(asset_id: int, column: str, days_ago: int) -> None:
+    """Test yordamchisi — asset'ning berilgan sana ustunini N kun oldingi
+    vaqtga o'zgartiradi (range-filtr testlari uchun, chunki
+    mark_asset_published()/mark_asset_rejected() faqat NOW()ni yozadi)."""
+    conn = database._get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"UPDATE assets SET {column} = NOW() - (INTERVAL '1 day' * %s) WHERE id=%s",
+                (days_ago, asset_id),
+            )
+        conn.commit()
+    finally:
+        database._put_conn(conn)
+
+
+class TestMarkAssetRejected:
+    def test_sets_status_and_rejected_at(self, clean_db):
+        p = database.get_or_create_project('reject-proj', 'Reject Loyiha')
+        asset = database.create_asset(
+            project_id=p['id'], source_url=None, asset_type='manual',
+            title='Test', content='Test content', score=0,
+        )
+        database.mark_asset_rejected(asset['id'])
+        updated = database.get_asset(asset['id'])
+        assert updated['status'] == 'rejected'
+        assert updated['rejected_at'] is not None
+
+
+class TestCountAssets:
+    """count_assets()/count_assets_today() — sidebar badge'lar shu bilan
+    ishlaydi, to'liq qatorlarni yuklamasdan."""
+
+    def test_count_assets_matches_actual_number(self, clean_db):
+        p = database.get_or_create_project('count-proj', 'Count Loyiha')
+        for _ in range(3):
+            database.create_asset(
+                project_id=p['id'], source_url=None, asset_type='manual',
+                title='T', content='C' * 60, score=0,
+            )
+        assert database.count_assets(p['id'], 'draft') == 3
+        assert database.count_assets(p['id'], 'published') == 0
+
+    def test_count_assets_scoped_to_project(self, clean_db):
+        p1 = database.get_or_create_project('count-p1', 'Count P1')
+        p2 = database.get_or_create_project('count-p2', 'Count P2')
+        database.create_asset(project_id=p1['id'], source_url=None, asset_type='manual', title='T', content='C' * 60, score=0)
+        database.create_asset(project_id=p2['id'], source_url=None, asset_type='manual', title='T', content='C' * 60, score=0)
+        database.create_asset(project_id=p2['id'], source_url=None, asset_type='manual', title='T', content='C' * 60, score=0)
+        assert database.count_assets(p1['id'], 'draft') == 1
+        assert database.count_assets(p2['id'], 'draft') == 2
+
+    def test_count_assets_today_excludes_older_published(self, clean_db):
+        p = database.get_or_create_project('count-today-proj', 'Count Today')
+        a1 = database.create_asset(project_id=p['id'], source_url=None, asset_type='manual', title='T', content='C' * 60, score=0)
+        a2 = database.create_asset(project_id=p['id'], source_url=None, asset_type='manual', title='T', content='C' * 60, score=0)
+        database.mark_asset_published(a1['id'])  # bugun
+        database.mark_asset_published(a2['id'])
+        _set_timestamp(a2['id'], 'published_at', days_ago=5)  # 5 kun oldin
+        assert database.count_assets_today(p['id'], 'published') == 1
+        assert database.count_assets(p['id'], 'published') == 2
+
+    def test_count_assets_today_excludes_older_rejected(self, clean_db):
+        p = database.get_or_create_project('count-today-rej', 'Count Today Rej')
+        a1 = database.create_asset(project_id=p['id'], source_url=None, asset_type='manual', title='T', content='C' * 60, score=0)
+        a2 = database.create_asset(project_id=p['id'], source_url=None, asset_type='manual', title='T', content='C' * 60, score=0)
+        database.mark_asset_rejected(a1['id'])
+        database.mark_asset_rejected(a2['id'])
+        _set_timestamp(a2['id'], 'rejected_at', days_ago=3)
+        assert database.count_assets_today(p['id'], 'rejected') == 1
+        assert database.count_assets(p['id'], 'rejected') == 2
+
+
+class TestGetAssetsByRange:
+    """Published/Rejected sahifalaridagi Bugun/Kecha/7 kun/30 kun/Barchasi
+    filtr-tab'lari uchun to'g'ridan-to'g'ri database qatlamini sinaydi."""
+
+    def _make_rejected_at(self, project, days_ago):
+        asset = database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title=f'rejected-{days_ago}d', content='C' * 60, score=0,
+        )
+        database.mark_asset_rejected(asset['id'])
+        if days_ago:
+            _set_timestamp(asset['id'], 'rejected_at', days_ago=days_ago)
+        return asset
+
+    def test_today_only_returns_todays_items(self, clean_db):
+        p = database.get_or_create_project('range-proj1', 'Range Loyiha 1')
+        today_asset = self._make_rejected_at(p, days_ago=0)
+        self._make_rejected_at(p, days_ago=2)
+        result = database.get_assets_by_range(p['id'], 'rejected', 'today')
+        assert [r['id'] for r in result] == [today_asset['id']]
+
+    def test_yesterday_excludes_today_and_older(self, clean_db):
+        p = database.get_or_create_project('range-proj2', 'Range Loyiha 2')
+        self._make_rejected_at(p, days_ago=0)
+        yesterday_asset = self._make_rejected_at(p, days_ago=1)
+        self._make_rejected_at(p, days_ago=3)
+        result = database.get_assets_by_range(p['id'], 'rejected', 'yesterday')
+        assert [r['id'] for r in result] == [yesterday_asset['id']]
+
+    def test_7d_includes_today_and_within_window_excludes_older(self, clean_db):
+        p = database.get_or_create_project('range-proj3', 'Range Loyiha 3')
+        recent = self._make_rejected_at(p, days_ago=0)
+        within_window = self._make_rejected_at(p, days_ago=5)
+        outside_window = self._make_rejected_at(p, days_ago=10)
+        result_ids = {r['id'] for r in database.get_assets_by_range(p['id'], 'rejected', '7d')}
+        assert recent['id'] in result_ids
+        assert within_window['id'] in result_ids
+        assert outside_window['id'] not in result_ids
+
+    def test_all_returns_everything_regardless_of_age(self, clean_db):
+        p = database.get_or_create_project('range-proj4', 'Range Loyiha 4')
+        old = self._make_rejected_at(p, days_ago=60)
+        new = self._make_rejected_at(p, days_ago=0)
+        result_ids = {r['id'] for r in database.get_assets_by_range(p['id'], 'rejected', 'all')}
+        assert {old['id'], new['id']} <= result_ids
+
+    def test_published_uses_published_at_not_rejected_at(self, clean_db):
+        p = database.get_or_create_project('range-proj5', 'Range Loyiha 5')
+        asset = database.create_asset(
+            project_id=p['id'], source_url=None, asset_type='manual',
+            title='T', content='C' * 60, score=0,
+        )
+        database.mark_asset_published(asset['id'])
+        result = database.get_assets_by_range(p['id'], 'published', 'today')
+        assert [r['id'] for r in result] == [asset['id']]
+
+    def test_unknown_range_key_falls_back_to_all(self, clean_db):
+        p = database.get_or_create_project('range-proj6', 'Range Loyiha 6')
+        old = self._make_rejected_at(p, days_ago=200)
+        result_ids = {r['id'] for r in database.get_assets_by_range(p['id'], 'rejected', 'not-a-real-range')}
+        assert old['id'] in result_ids
+
+
+class TestRejectedAtBackfillMigration:
+    """init_db()dagi bir martalik backfill: rejected_at ustuni qo'shilishidan
+    OLDIN (yoki eski kod bilan) rad etilgan yozuvlarda bu ustun NULL
+    qoladi — init_db() ularni created_at bilan to'ldirishi kerak, aks
+    holda ular sana-filtrli ko'rinishlarda (Bugun/Kecha/...) hech qachon
+    ko'rinmay qoladi."""
+
+    def test_backfills_null_rejected_at_from_created_at(self, clean_db):
+        p = database.get_or_create_project('backfill-proj', 'Backfill Loyiha')
+        asset = database.create_asset(
+            project_id=p['id'], source_url=None, asset_type='manual',
+            title='Eski rad etilgan', content='C' * 60, score=0,
+        )
+        # Eski kod xatti-harakatini simulyatsiya qilamiz: status='rejected'
+        # qo'lda o'rnatiladi, lekin rejected_at NULL qoldiriladi (ya'ni
+        # mark_asset_rejected() ATAYLAB chaqirilmaydi).
+        conn = database._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE assets SET status='rejected', rejected_at=NULL WHERE id=%s", (asset['id'],))
+            conn.commit()
+        finally:
+            database._put_conn(conn)
+
+        assert database.get_asset(asset['id'])['rejected_at'] is None
+
+        database.init_db()  # backfill shu yerda ishlaydi
+
+        healed = database.get_asset(asset['id'])
+        assert healed['rejected_at'] is not None
+        assert healed['rejected_at'] == healed['created_at']

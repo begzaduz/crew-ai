@@ -199,6 +199,9 @@ STUDIO_HTML = """<!DOCTYPE html>
   .input-tab{ font-size:11px; padding:5px 11px; border-radius:var(--radius-sm); background:var(--surface-2); color:var(--text-dim); border:1px solid var(--border); }
   .input-tab.active{ background:var(--gold); color:var(--navy-deep); font-weight:600; border-color:var(--gold); }
   .input-tab.disabled{ opacity:.4; cursor:default; }
+  .range-tabs{ display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
+  .range-tab{ font-size:11px; padding:5px 12px; border-radius:var(--radius-sm); background:var(--surface-2); color:var(--text-dim); border:1px solid var(--border); cursor:pointer; }
+  .range-tab.active{ background:var(--gold); color:var(--navy-deep); font-weight:600; border-color:var(--gold); }
   textarea, input[type=text]{ width:100%; background:var(--navy-deep); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:12.5px; padding:9px 11px; font-family:inherit; }
   textarea{ min-height:100px; resize:vertical; line-height:1.5; }
   textarea:focus, input[type=text]:focus{ outline:none; border-color:var(--gold); }
@@ -388,11 +391,25 @@ STUDIO_HTML = """<!DOCTYPE html>
 
     <div class="view" id="view-published">
       <div class="page-head"><h1>Published</h1><p>Tanlangan loyiha kanaliga chiqqan postlar</p></div>
+      <div class="range-tabs" id="range-tabs-published">
+        <button class="range-tab active" data-range="today" onclick="switchRange('published','queue-published','today')">Bugun</button>
+        <button class="range-tab" data-range="yesterday" onclick="switchRange('published','queue-published','yesterday')">Kecha</button>
+        <button class="range-tab" data-range="7d" onclick="switchRange('published','queue-published','7d')">7 kun</button>
+        <button class="range-tab" data-range="30d" onclick="switchRange('published','queue-published','30d')">30 kun</button>
+        <button class="range-tab" data-range="all" onclick="switchRange('published','queue-published','all')">Barchasi</button>
+      </div>
       <div class="queue-grid" id="queue-published"><div class="empty">Yuklanmoqda...</div></div>
     </div>
 
     <div class="view" id="view-rejected">
       <div class="page-head"><h1>Rejected</h1><p>Rad etilgan postlar</p></div>
+      <div class="range-tabs" id="range-tabs-rejected">
+        <button class="range-tab active" data-range="today" onclick="switchRange('rejected','queue-rejected','today')">Bugun</button>
+        <button class="range-tab" data-range="yesterday" onclick="switchRange('rejected','queue-rejected','yesterday')">Kecha</button>
+        <button class="range-tab" data-range="7d" onclick="switchRange('rejected','queue-rejected','7d')">7 kun</button>
+        <button class="range-tab" data-range="30d" onclick="switchRange('rejected','queue-rejected','30d')">30 kun</button>
+        <button class="range-tab" data-range="all" onclick="switchRange('rejected','queue-rejected','all')">Barchasi</button>
+      </div>
       <div class="queue-grid" id="queue-rejected"><div class="empty">Yuklanmoqda...</div></div>
     </div>
 
@@ -725,8 +742,12 @@ STUDIO_HTML = """<!DOCTYPE html>
       document.getElementById('lc-rejected').textContent = s.rejected_total ?? 0;
       document.getElementById('nav-count-draft').textContent = s.pending_review ?? 0;
       document.getElementById('nav-count-scheduled').textContent = s.scheduled_count ?? 0;
-      document.getElementById('nav-count-published').textContent = s.published_total ?? 0;
-      document.getElementById('nav-count-rejected').textContent = s.rejected_total ?? 0;
+      // Badge'lar BUGUNGI sonni ko'rsatadi (Published/Rejected bo'limi
+      // ochilganda ham standart holat "Bugun" tab'i bo'lgani uchun mos
+      // keladi). Umumiy (barcha vaqt) son Dashboard'dagi "Kontent hayot
+      // sikli" halqasida (lc-published/lc-rejected) ko'rinadi.
+      document.getElementById('nav-count-published').textContent = s.posts_today ?? 0;
+      document.getElementById('nav-count-rejected').textContent = s.rejected_today ?? 0;
       document.getElementById('nav-count-sources').textContent = s.total_sources ?? 0;
 
       const dot = document.getElementById('status-dot');
@@ -801,25 +822,53 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
   }
 
+  // Published/Rejected sahifalarida tanlangan filtr-tab (Bugun/Kecha/7
+  // kun/30 kun/Barchasi) — loyiha almashtirilganda yoki polling'da
+  // (refreshCurrentLists) tanlov saqlanib qolishi uchun holat sifatida
+  // ushlab turiladi.
+  const rangeState = { published: 'today', rejected: 'today' };
+  const RANGE_EMPTY_LABELS = {
+    today: "Bugun bu bo'limda post yo'q.",
+    yesterday: "Kecha bu bo'limda post bo'lmagan.",
+    '7d': "So'nggi 7 kunda bu bo'limda post yo'q.",
+    '30d': "So'nggi 30 kunda bu bo'limda post yo'q.",
+    all: "Hozircha bu bo'limda post yo'q.",
+  };
+
+  function switchRange(status, containerId, range) {
+    rangeState[status] = range;
+    const tabsEl = document.getElementById('range-tabs-' + status);
+    if (tabsEl) {
+      tabsEl.querySelectorAll('.range-tab').forEach(b => b.classList.toggle('active', b.dataset.range === range));
+    }
+    loadAssets(status, containerId);
+  }
+
   async function loadAssets(status, containerId) {
     const el = document.getElementById(containerId);
+    const range = rangeState[status] || 'all';
+    const hasRange = status === 'published' || status === 'rejected';
     try {
-      const res = await apiGet('/api/studio/assets?status=' + status);
+      const url = '/api/studio/assets?status=' + status + (hasRange ? '&range=' + range : '');
+      const res = await apiGet(url);
       const items = await res.json();
       items.forEach(a => assetCache[a.id] = a);
       if (!items.length) {
-        el.innerHTML = '<div class="empty">Hozircha bu bo\\'limda post yo\\'q.</div>';
+        el.innerHTML = `<div class="empty">${hasRange ? RANGE_EMPTY_LABELS[range] : "Hozircha bu bo'limda post yo'q."}</div>`;
         return;
       }
       el.innerHTML = items.map(a => {
         const host = hostFromUrl(a.source_url);
+        const eventTime = status === 'published' ? (a.published_at || a.created_at)
+          : status === 'rejected' ? (a.rejected_at || a.created_at)
+          : a.created_at;
         return `
         <div class="q-card" data-id="${a.id}" onclick="openAsset(${a.id})">
           <div class="q-card-main">
             <div class="q-title">${escapeHtml((a.title || '').slice(0, 90))}</div>
             <div class="q-meta">
               ${host ? '<span>' + escapeHtml(host) + '</span>' : `<span>${escapeHtml(assetTypeLabel(a.type))}</span>`}
-              <span>${fmtTime(a.created_at)}</span>
+              <span>${fmtTime(eventTime)}</span>
               ${a.score ? '<span>ball ' + a.score + '</span>' : ''}
             </div>
           </div>

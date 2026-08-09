@@ -333,6 +333,101 @@ class TestListAssetsSelfHeal:
         assert cleaned['content'] == 'Toza matn, hech qanday teg yoq.'
 
 
+class TestListAssetsRangeFilter:
+    """Published/Rejected sahifalaridagi 'range' query parametri —
+    studio_api.list_assets() to'g'ri database.get_assets_by_range()ga
+    yo'naltirishi kerak, draft/scheduled esa range'ga umuman e'tibor
+    bermasligi kerak (ular har doim to'liq ro'yxat)."""
+
+    def test_range_param_used_for_published(self, clean_db):
+        project = database.get_or_create_project('range-api-1', 'Range API 1')
+        asset = database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title='T', content='C' * 60, score=0,
+        )
+        database.mark_asset_published(asset['id'])
+        status, payload = studio_api.list_assets(project['id'], {'status': 'published', 'range': 'today'})
+        assert status == 200
+        assert len(payload) == 1
+
+    def test_range_param_used_for_rejected(self, clean_db):
+        project = database.get_or_create_project('range-api-2', 'Range API 2')
+        asset = database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title='T', content='C' * 60, score=0,
+        )
+        database.mark_asset_rejected(asset['id'])
+        conn = database._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE assets SET rejected_at = NOW() - INTERVAL '10 days' WHERE id=%s", (asset['id'],))
+            conn.commit()
+        finally:
+            database._put_conn(conn)
+        status, payload = studio_api.list_assets(project['id'], {'status': 'rejected', 'range': 'today'})
+        assert status == 200
+        assert payload == []
+
+    def test_range_param_ignored_for_draft(self, clean_db):
+        project = database.get_or_create_project('range-api-3', 'Range API 3')
+        database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title='T', content='C' * 60, score=0,
+        )
+        # draft'lar range'dan qat'i nazar har doim to'liq ko'rinishi kerak
+        status, payload = studio_api.list_assets(project['id'], {'status': 'draft', 'range': 'today'})
+        assert status == 200
+        assert len(payload) == 1
+
+    def test_missing_range_defaults_to_all(self, clean_db):
+        project = database.get_or_create_project('range-api-4', 'Range API 4')
+        asset = database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title='T', content='C' * 60, score=0,
+        )
+        database.mark_asset_published(asset['id'])
+        conn = database._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE assets SET published_at = NOW() - INTERVAL '60 days' WHERE id=%s", (asset['id'],))
+            conn.commit()
+        finally:
+            database._put_conn(conn)
+        status, payload = studio_api.list_assets(project['id'], {'status': 'published'})
+        assert status == 200
+        assert len(payload) == 1
+
+
+class TestDashboardStatsTodayCounts:
+    def test_posts_today_and_rejected_today_reflect_todays_activity_only(self, clean_db):
+        project = database.get_or_create_project('stats-today', 'Stats Today')
+        pub_today = database.create_asset(project_id=project['id'], source_url=None, asset_type='manual', title='T', content='C' * 60, score=0)
+        pub_old = database.create_asset(project_id=project['id'], source_url=None, asset_type='manual', title='T', content='C' * 60, score=0)
+        rej_today = database.create_asset(project_id=project['id'], source_url=None, asset_type='manual', title='T', content='C' * 60, score=0)
+        rej_old = database.create_asset(project_id=project['id'], source_url=None, asset_type='manual', title='T', content='C' * 60, score=0)
+
+        database.mark_asset_published(pub_today['id'])
+        database.mark_asset_published(pub_old['id'])
+        database.mark_asset_rejected(rej_today['id'])
+        database.mark_asset_rejected(rej_old['id'])
+
+        conn = database._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE assets SET published_at = NOW() - INTERVAL '9 days' WHERE id=%s", (pub_old['id'],))
+                cur.execute("UPDATE assets SET rejected_at = NOW() - INTERVAL '9 days' WHERE id=%s", (rej_old['id'],))
+            conn.commit()
+        finally:
+            database._put_conn(conn)
+
+        status, stats = studio_api.get_dashboard_stats(project['id'])
+        assert status == 200
+        assert stats['posts_today'] == 1
+        assert stats['rejected_today'] == 1
+        assert stats['published_total'] == 2
+        assert stats['rejected_total'] == 2
+
+
 class TestUpdateConfig:
     def test_rejects_unknown_keys_only(self, clean_db):
         project = database.get_or_create_project('cfg-test', 'Config Test')

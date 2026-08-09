@@ -203,24 +203,18 @@ _STATUS_STALE_THRESHOLD_SECONDS = INTERVAL * 2
 def get_dashboard_stats(project_id: int) -> tuple[int, object]:
     try:
         import datetime as _dt
-        drafts = database.get_assets(project_id, status='draft', limit=200)
-        scheduled = database.get_assets(project_id, status='scheduled', limit=200)
-        published = database.get_assets(project_id, status='published', limit=200)
-        rejected = database.get_assets(project_id, status='rejected', limit=200)
+        # MUHIM: bular endi to'liq qatorlarni (content matni bilan)
+        # yuklamaydi — faqat COUNT(*) (composite index (project_id, status)
+        # orqali tez). Avvalgi versiya har 25s poll'da 200 tagacha to'liq
+        # asset qatorini faqat sonini bilish uchun yuklardi, va 200 tadan
+        # oshgach badge noto'g'ri (qotib qolgan) son ko'rsatardi.
+        pending_review = database.count_assets(project_id, 'draft')
+        scheduled_count = database.count_assets(project_id, 'scheduled')
+        published_total = database.count_assets(project_id, 'published')
+        rejected_total = database.count_assets(project_id, 'rejected')
+        published_today = database.count_assets_today(project_id, 'published')
+        rejected_today = database.count_assets_today(project_id, 'rejected')
         sources = database.get_data_sources(project_id)
-
-        today = _dt.datetime.now(_dt.timezone.utc).date()
-        posts_today = 0
-        for a in published:
-            pub = a.get('published_at')
-            if not pub:
-                continue
-            try:
-                d = pub.date() if hasattr(pub, 'date') else _dt.datetime.fromisoformat(str(pub)).date()
-                if d == today:
-                    posts_today += 1
-            except Exception:
-                continue
 
         last_run_at = database.get_last_asset_created_at(project_id)
         if last_run_at is None:
@@ -239,11 +233,12 @@ def get_dashboard_stats(project_id: int) -> tuple[int, object]:
             publish_interval_minutes = 0
 
         return 200, {
-            'pending_review': len(drafts),
-            'scheduled_count': len(scheduled),
-            'published_total': len(published),
-            'rejected_total': len(rejected),
-            'posts_today': posts_today,
+            'pending_review': pending_review,
+            'scheduled_count': scheduled_count,
+            'published_total': published_total,
+            'rejected_total': rejected_total,
+            'posts_today': published_today,
+            'rejected_today': rejected_today,
             'active_sources': sum(1 for s in sources if s.get('active')),
             'total_sources': len(sources),
             'publish_interval_minutes': publish_interval_minutes,
@@ -273,8 +268,16 @@ def list_assets(project_id: int, query: dict) -> tuple[int, object]:
     farq topilsa, DB'ga ham darhol yozib qo'yiladi (self-heal), shunda
     bu asset boshqa hech qachon xom holatda ko'rinmaydi."""
     status = (query or {}).get('status') or 'draft'
+    range_key = (query or {}).get('range') or 'all'
     try:
-        assets = database.get_assets(project_id, status=status)
+        # 'range' filtri faqat Published/Rejected sahifalarida ma'no
+        # anglatadi (Bugun/Kecha/7 kun/30 kun/Barchasi) — Draft/Scheduled
+        # har doim to'liq ro'yxat sifatida ko'rsatiladi (ular allaqachon
+        # faqat "hozir amaldagi" yozuvlarni o'z ichiga oladi).
+        if status in ('published', 'rejected'):
+            assets = database.get_assets_by_range(project_id, status, range_key)
+        else:
+            assets = database.get_assets(project_id, status=status)
         for a in assets:
             raw = a.get('content') or ''
             cleaned = telegram_utils.sanitize_telegram_html(raw)
@@ -415,7 +418,7 @@ def reject_asset(data: dict) -> tuple[int, object]:
         return 400, {'error': 'id kerak'}
     asset_id = int(asset_id)
     try:
-        database.set_asset_status(asset_id, 'rejected')
+        database.mark_asset_rejected(asset_id)
         database.add_review(
             asset_id,
             reviewer=data.get('reviewer', 'dashboard'),

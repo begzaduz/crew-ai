@@ -197,6 +197,26 @@ def init_db() -> None:
             # ustun bo'yicha FIFO tartibda (eng eski tasdiqlangan
             # birinchi) navbatdan chiqaradi.
             cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ")
+            # Published/Rejected sahifalarida "Bugun/Kecha/7 kun/30 kun/
+            # Barchasi" filtr-tab'lari uchun — published_at kabi, faqat
+            # rad etilgan vaqtni saqlaydi (mark_asset_rejected() to'ldiradi).
+            # Bu bo'lmasa, filtrlash created_at (yaratilgan vaqt)ga
+            # tayanishga majbur bo'lardi — haftalar oldin yaratilib,
+            # BUGUN rad etilgan post "7 kun oldin" bo'limida ko'rinib
+            # qolardi, bu chalkashtiradi.
+            cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ")
+            # Bir martalik backfill: ustun qo'shilishidan OLDIN rad etilgan
+            # eski yozuvlarda rejected_at NULL qoladi — ular sana-filtrli
+            # ko'rinishlarda (Bugun/Kecha/...) ko'rinmay qolib, faqat
+            # "Barchasi"da chiqadi. Yaqinlashtirish sifatida created_at'ni
+            # ishlatamiz (aniq rad etilgan vaqt saqlanmagan, lekin bu eng
+            # yaqin taxmin). Idempotent — faqat hali NULL qolganlarga tegadi.
+            cur.execute("UPDATE assets SET rejected_at = created_at WHERE status = 'rejected' AND rejected_at IS NULL")
+            # Range-filtrli so'rovlar (published_at/rejected_at bo'yicha)
+            # va sidebar badge COUNT(*) so'rovlari tez ishlashi uchun.
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_project_status ON assets(project_id, status)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_published_at ON assets(project_id, status, published_at)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_rejected_at ON assets(project_id, status, rejected_at)")
 
             cur.execute('''
                 CREATE TABLE IF NOT EXISTS reviews (
@@ -648,6 +668,85 @@ def get_assets(project_id: int, status: str | None = None, limit: int = 50) -> l
         _put_conn(conn)
 
 
+# Published/Rejected uchun sana ustuni: har biri o'z "sodir bo'lgan vaqti"
+# bo'yicha filtrlanadi (published_at / rejected_at), draft/scheduled uchun
+# range-filtr qo'llanmaydi (get_assets_by_range() faqat shu ikkitasi bilan
+# chaqiriladi, boshqasiga tushmaydi).
+_RANGE_DATE_COLUMN = {'published': 'published_at', 'rejected': 'rejected_at'}
+_RANGE_WINDOW_DAYS = {'today': 0, '7d': 6, '30d': 29}
+
+
+def count_assets(project_id: int, status: str) -> int:
+    """Berilgan status bo'yicha JAMI (barcha vaqt) sonini qaytaradi —
+    to'liq qatorlarni yuklamasdan, faqat COUNT(*) (composite index
+    (project_id, status) orqali tez). Dashboard'dagi 'Kontent hayot
+    sikli' halqasi kabi umumiy statistikalar uchun."""
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                'SELECT COUNT(*) FROM assets WHERE project_id=%s AND status=%s',
+                (project_id, status),
+            )
+            return int(cur.fetchone()[0])
+    finally:
+        _put_conn(conn)
+
+
+def count_assets_today(project_id: int, status: str) -> int:
+    """Berilgan status uchun BUGUNGI (UTC) sonini qaytaradi — 'published'
+    uchun published_at, 'rejected' uchun rejected_at bo'yicha. Sidebar
+    badge'lar (nav-count-published/rejected) shu bilan ishlaydi."""
+    date_col = _RANGE_DATE_COLUMN.get(status, 'created_at')
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f'''SELECT COUNT(*) FROM assets WHERE project_id=%s AND status=%s
+                    AND {date_col} >= (NOW() AT TIME ZONE 'UTC')::date
+                    AND {date_col} < (NOW() AT TIME ZONE 'UTC')::date + INTERVAL '1 day' ''',
+                (project_id, status),
+            )
+            return int(cur.fetchone()[0])
+    finally:
+        _put_conn(conn)
+
+
+def get_assets_by_range(project_id: int, status: str, range_key: str = 'all', limit: int = 100) -> list[dict]:
+    """Published/Rejected sahifalaridagi 'Bugun/Kecha/7 kun/30 kun/
+    Barchasi' filtr-tab'lari uchun. range_key noto'g'ri yoki 'all' bo'lsa,
+    filtrsiz (barcha vaqt, eng yangisi birinchi) qaytaradi."""
+    date_col = _RANGE_DATE_COLUMN.get(status, 'created_at')
+    conn = _get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if range_key == 'yesterday':
+                cur.execute(
+                    f'''SELECT * FROM assets WHERE project_id=%s AND status=%s
+                        AND {date_col} >= (NOW() AT TIME ZONE 'UTC')::date - INTERVAL '1 day'
+                        AND {date_col} < (NOW() AT TIME ZONE 'UTC')::date
+                        ORDER BY {date_col} DESC LIMIT %s''',
+                    (project_id, status, limit),
+                )
+            elif range_key in _RANGE_WINDOW_DAYS:
+                days_back = _RANGE_WINDOW_DAYS[range_key]
+                cur.execute(
+                    f'''SELECT * FROM assets WHERE project_id=%s AND status=%s
+                        AND {date_col} >= (NOW() AT TIME ZONE 'UTC')::date - (INTERVAL '1 day' * %s)
+                        ORDER BY {date_col} DESC LIMIT %s''',
+                    (project_id, status, days_back, limit),
+                )
+            else:
+                cur.execute(
+                    f'''SELECT * FROM assets WHERE project_id=%s AND status=%s
+                        ORDER BY {date_col} DESC NULLS LAST LIMIT %s''',
+                    (project_id, status, limit),
+                )
+            return [dict(r) for r in cur.fetchall()]
+    finally:
+        _put_conn(conn)
+
+
 def get_asset(asset_id: int) -> dict | None:
     conn = _get_conn()
     try:
@@ -815,6 +914,22 @@ def mark_asset_published(asset_id: int) -> None:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE assets SET status='published', published_at=NOW() WHERE id=%s",
+                (asset_id,),
+            )
+        conn.commit()
+    finally:
+        _put_conn(conn)
+
+
+def mark_asset_rejected(asset_id: int) -> None:
+    """mark_asset_published()ga o'xshab — status='rejected' bilan birga
+    rejected_at=NOW()ni ham yozadi, shunda Rejected sahifasidagi sana
+    filtrlari (Bugun/Kecha/...) to'g'ri ishlaydi."""
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE assets SET status='rejected', rejected_at=NOW() WHERE id=%s",
                 (asset_id,),
             )
         conn.commit()
