@@ -87,14 +87,15 @@ STUDIO_HTML = """<!DOCTYPE html>
   }
 
   .sidebar{ background:var(--navy-deep); border-right:1px solid var(--border); overflow-y:auto; display:flex; flex-direction:column; }
-  .brand{ display:flex; align-items:center; gap:9px; padding:16px 16px 12px; border-bottom:1px solid var(--border); }
+  .brand{ display:flex; flex-direction:column; justify-content:center; padding:18px 16px 15px; border-bottom:1px solid var(--border); }
   .project-switcher{ display:flex; gap:5px; padding:10px 14px; border-bottom:1px solid var(--border); }
   .project-switcher select{ flex:1; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:12px; padding:6px 7px; font-family:inherit; }
   .project-switcher select:focus{ outline:none; border-color:var(--gold); }
   .project-switcher .btn{ padding:0 10px; font-size:14px; line-height:1; }
-  .brand-mark{ width:26px; height:26px; border-radius:var(--radius-sm); background:var(--gold); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:11.5px; font-family:var(--font-mono); color:var(--navy-deep); flex-shrink:0; }
-  .brand-name{ font-size:14.5px; font-weight:600; }
-  .brand-name span{ font-weight:400; color:var(--text-faint); }
+  .brand-name{ line-height:1; }
+  .brand-eyebrow{ display:block; font-family:var(--font-mono); font-size:9.5px; font-weight:600; letter-spacing:.32em; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px; }
+  .brand-word{ font-size:23px; font-weight:700; color:var(--text); letter-spacing:-.02em; }
+  .brand-dot{ color:var(--gold); }
   nav.groups{ padding:10px 8px; flex:1; }
   .group{ margin-bottom:12px; }
   .group-label{ font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-faint); font-weight:600; font-family:var(--font-mono); padding:5px 10px 5px; }
@@ -275,8 +276,10 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   <aside class="sidebar">
     <div class="brand">
-      <div class="brand-mark">SL</div>
-      <div class="brand-name"><span>Studio</span> Lab</div>
+      <div class="brand-name">
+        <span class="brand-eyebrow">Studio</span>
+        <span class="brand-word">Lab<span class="brand-dot">.</span></span>
+      </div>
     </div>
     <div class="project-switcher">
       <select id="project-select" onchange="switchProject(this.value)"></select>
