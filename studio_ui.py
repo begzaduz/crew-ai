@@ -93,10 +93,9 @@ STUDIO_HTML = """<!DOCTYPE html>
   .project-switcher select{ flex:1; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:12px; padding:6px 7px; font-family:inherit; }
   .project-switcher select:focus{ outline:none; border-color:var(--gold); }
   .project-switcher .btn{ padding:0 10px; font-size:14px; line-height:1; }
-  .brand-name{ line-height:1; }
-  .brand-eyebrow{ display:block; font-family:var(--font-mono); font-size:9.5px; font-weight:600; letter-spacing:.32em; color:var(--text-faint); text-transform:uppercase; margin-bottom:4px; }
-  .brand-word{ font-size:23px; font-weight:700; color:var(--text); letter-spacing:-.02em; }
-  .brand-dot{ color:var(--gold); }
+  .brand-name{ line-height:.88; }
+  .brand-line{ display:block; font-size:20px; font-weight:700; color:var(--text); letter-spacing:-.02em; }
+  .brand-line.accent{ color:var(--gold); }
   nav.groups{ padding:10px 8px; flex:1; }
   .group{ margin-bottom:12px; }
   .group-label{ font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-faint); font-weight:600; font-family:var(--font-mono); padding:5px 10px 5px; }
@@ -277,8 +276,8 @@ STUDIO_HTML = """<!DOCTYPE html>
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-name">
-        <span class="brand-eyebrow">Studio</span>
-        <span class="brand-word">Lab<span class="brand-dot">.</span></span>
+        <span class="brand-line">Studio</span>
+        <span class="brand-line accent">Lab</span>
       </div>
     </div>
     <div class="project-switcher">
