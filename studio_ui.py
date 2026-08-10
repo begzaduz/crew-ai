@@ -38,6 +38,7 @@ STUDIO_HTML = """<!DOCTYPE html>
   .mobile-topbar{ display:none; }
   .mobile-backdrop{ display:none; }
   .rp-close-mobile{ display:none; }
+  .mobile-only-inline{ display:none; }
 
   @media (max-width: 900px){
     body{ overflow:auto; }
@@ -174,7 +175,6 @@ STUDIO_HTML = """<!DOCTYPE html>
   .mini-card .mc-title{ font-size:11.5px; font-weight:600; line-height:1.32; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .mini-card .mc-meta{ font-size:9.5px; color:var(--text-faint); margin-top:1px; }
 
-  .mobile-only-inline{ display:none; }
   .q-title{ font-size:12.5px; font-weight:600; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .q-meta{ display:flex; gap:7px; font-size:10px; color:var(--text-faint); margin-top:2px; flex-wrap:wrap; }
   .tag{ display:inline-block; font-size:9.5px; padding:2px 6px; border-radius:var(--radius-sm); font-weight:600; letter-spacing:.03em; flex-shrink:0; }
