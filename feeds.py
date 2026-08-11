@@ -9,6 +9,16 @@ from config import ARTICLE_MAX_AGE_HOURS, MIN_SCORE
 
 log = logging.getLogger(__name__)
 
+# MUHIM: feedparser standart holatda O'ZINING User-Agent'ini
+# ('python-feedparser/...') yuboradi — ko'p yirik nashriyot saytlari
+# (masalan talkSPORT/News UK) buni bot-himoya orqali avtomatik bloklab,
+# BO'SH (0 ta entries) javob qaytaradi — HTTP xato ham, exception ham
+# bo'lmaydi, shuning uchun bu jimgina "manba ishlamayapti" ko'rinishida
+# namoyon bo'ladi. Oddiy brauzer User-Agent'i bilan so'rov yuborish bu
+# muammoni oldini oladi (fetch_article_text/fetch_article_image'da
+# allaqachon xuddi shu sabab bilan qo'llanilgan yondashuv).
+_FEED_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+
 # Faqat seed (birinchi marta DB bo'sh bo'lganda data_sources jadvaliga
 # yoziladigan) standart ro'yxat. Runtime'da fetch_news() BU o'zgaruvchini
 # ishlatmaydi — chaqiruvchi (main.py) manbalarni har doim DB'dagi
@@ -234,8 +244,16 @@ def fetch_news(rss_feeds: list[str]) -> list[dict]:
     for feed_url in rss_feeds:
         stats = {'jami': 0, 'eski': 0, 'mos_emas': 0, 'otdi': 0, 'xato': None}
         try:
-            feed = feedparser.parse(feed_url)
+            feed = feedparser.parse(feed_url, request_headers={'User-Agent': _FEED_USER_AGENT})
             stats['jami'] = len(feed.entries)
+            # Diagnostika: agar hech qanday entry topilmasa, sabab (HTTP
+            # status yoki parsing xatosi — 'bozo') loglarga qo'shiladi,
+            # shunda "0 ta" natija User-Agent bloklanishimi, noto'g'ri
+            # URL'mi yoki boshqa sababmi — logdan darhol bilinadi.
+            if not feed.entries:
+                http_status = getattr(feed, 'status', None)
+                bozo_reason = str(feed.get('bozo_exception', '')) if feed.get('bozo') else ''
+                stats['xato'] = f"bo'sh javob (http_status={http_status}, bozo={bozo_reason[:80]})"
             for entry in feed.entries:
                 url = _normalize_url(entry.get('link', ''))
                 if not url or url in seen:
