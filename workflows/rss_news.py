@@ -21,12 +21,13 @@ import re
 import time
 import logging
 
+import requests
 from google import genai
 from google.genai import types
 from google.genai.errors import ClientError, ServerError
 
 import database
-from config import GEMINI_KEY, GEMINI_MODEL
+from config import GEMINI_KEY, GEMINI_MODEL, GROK_KEY, GROK_MODEL
 from feeds import fetch_article_text
 from telegram_utils import sanitize_telegram_html
 
@@ -189,6 +190,43 @@ def _nicknames_block(nicknames: dict) -> str:
     return '\n'.join(f'{eng} = {uzb}' for eng, uzb in nicknames.items())
 
 
+# ── Grok (xAI) — Gemini kunlik RPD kvotasi tugaganda ZAXIRA ────────
+# OpenAI-compatible chat completions formati (https://api.x.ai/v1),
+# shuning uchun qo'shimcha SDK kerak emas — mavjud 'requests' orqali
+# to'g'ridan-to'g'ri chaqiriladi (feeds.py/telegram_utils.py'dagi
+# uslubga mos, yangi bog'liqlik qo'shilmaydi).
+GROK_API_URL = 'https://api.x.ai/v1/chat/completions'
+
+
+def grok_call(system_prompt: str, user_prompt: str, max_tokens: int = 700) -> str:
+    """Grok orqali chaqiruv — FAQAT groq_call() ichida, Gemini RPD
+    kvotasi tugaganda (429) va GROK_KEY sozlangan bo'lsa, avtomatik
+    zaxira sifatida chaqiriladi. Alohida, to'g'ridan-to'g'ri
+    chaqirilishi ham mumkin, lekin hozircha pipeline shunga muhtoj
+    emas."""
+    if not GROK_KEY:
+        raise RuntimeError('GROK_KEY sozlanmagan — Grok zaxira ishlay olmaydi')
+    resp = requests.post(
+        GROK_API_URL,
+        headers={
+            'Authorization': f'Bearer {GROK_KEY}',
+            'Content-Type': 'application/json',
+        },
+        json={
+            'model': GROK_MODEL,
+            'messages': [
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_prompt},
+            ],
+            'max_tokens': max_tokens,
+        },
+        timeout=30,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    return (data['choices'][0]['message']['content'] or '').strip()
+
+
 # ── Gemini API — kvota tejash uchun retry o'chirilgan ─────
 def groq_call(system_prompt: str, user_prompt: str,
               temperature: float = 0.4, max_tokens: int = 700,
@@ -230,7 +268,15 @@ def groq_call(system_prompt: str, user_prompt: str,
     except ClientError as e:
         is_rate_limit = '429' in str(e) or 'RESOURCE_EXHAUSTED' in str(e)
         if is_rate_limit:
-            log.error('[Gemini] Kvota tugadi (429) — qayta urinilmaydi, kvota tejaldi.')
+            log.error('[Gemini] Kvota tugadi (429).')
+            if GROK_KEY:
+                log.warning('[Gemini] Grok (xAI) zaxira sifatida ishlatilmoqda.')
+                try:
+                    return grok_call(system_prompt, user_prompt, max_tokens=max_tokens)
+                except Exception as grok_e:
+                    log.error(f'[Grok] Zaxira ham muvaffaqiyatsiz: {grok_e}')
+                    raise
+            log.error('[Gemini] GROK_KEY sozlanmagan — zaxira yo\'q, kvota tejaldi.')
         else:
             log.error(f'[Gemini] Client xato: {e}')
         raise

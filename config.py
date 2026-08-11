@@ -21,6 +21,13 @@ WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET', '')
 GEMINI_KEY   = os.getenv('GEMINI_KEY', '')
 GEMINI_MODEL = 'gemini-3.6-flash'
 
+# ── Grok (xAI) — Gemini kunlik RPD kvotasi tugaganda ZAXIRA (fallback) ──
+# Ixtiyoriy: bo'sh bo'lsa, fallback ishlamaydi (avvalgi xatti-harakat —
+# 429 kelsa darhol xato ko'tariladi). GROK_KEY sozlansa, groq_call()
+# Gemini 429/RESOURCE_EXHAUSTED xatosida avtomatik Grok'ga o'tadi.
+GROK_KEY   = os.getenv('GROK_KEY', '')
+GROK_MODEL = 'grok-4.1-fast'
+
 # ── Football-data.org ─────────────────────────────────────
 FOOTBALL_DATA_KEY = os.getenv('FOOTBALL_DATA_KEY', '')
 
