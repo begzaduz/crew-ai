@@ -454,6 +454,8 @@ STUDIO_HTML = """<!DOCTYPE html>
           <input type="text" id="domain-description" placeholder="masalan: Premier League football" style="margin-bottom:10px">
           <span class="field-label">Telegram kanali (haqiqiy yuborish manzili — masalan @KanalNomi yoki -100...)</span>
           <input type="text" id="telegram-channel-id" placeholder="@Inglizfutbol" style="margin-bottom:10px">
+          <span class="field-label">Bot admin chat_id (ixtiyoriy — shu chat orqali /yangilik, /stat kabi bot buyruqlari ANA SHU loyiha bilan ishlaydi. /whoami orqali oling)</span>
+          <input type="text" id="telegram-admin-chat-id" placeholder="123456789" style="margin-bottom:10px">
           <span class="field-label">Kanal yorlig'i (postning oxiriga qo'shiladigan matn)</span>
           <input type="text" id="channel-tag" placeholder="@Inglizfutbol" style="margin-bottom:10px">
           <span class="field-label">Uslub (tone)</span>
@@ -1459,9 +1461,10 @@ STUDIO_HTML = """<!DOCTYPE html>
     const domain_description = document.getElementById('domain-description').value.trim();
     const channel_tag = document.getElementById('channel-tag').value.trim();
     const telegram_channel_id = document.getElementById('telegram-channel-id').value.trim();
+    const telegram_admin_chat_id = document.getElementById('telegram-admin-chat-id').value.trim();
     const tone = document.getElementById('tone-field').value.trim();
     const gemini_api_key = document.getElementById('gemini-api-key').value.trim();
-    const res = await apiPost('/api/studio/config', { domain_description, channel_tag, telegram_channel_id, tone, gemini_api_key });
+    const res = await apiPost('/api/studio/config', { domain_description, channel_tag, telegram_channel_id, telegram_admin_chat_id, tone, gemini_api_key });
     const data = await res.json();
     if (!res.ok) { toast(data.error || 'Xatolik'); return; }
     toast('Saqlandi');
@@ -1481,6 +1484,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       document.getElementById('domain-description').value = cfg.domain_description || '';
       document.getElementById('channel-tag').value = cfg.channel_tag || '';
       document.getElementById('telegram-channel-id').value = cfg.telegram_channel_id || '';
+      document.getElementById('telegram-admin-chat-id').value = cfg.telegram_admin_chat_id || '';
       document.getElementById('tone-field').value = cfg.tone || '';
       const keyInput = document.getElementById('gemini-api-key');
       keyInput.value = '';

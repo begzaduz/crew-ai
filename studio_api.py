@@ -129,7 +129,7 @@ def get_config(project_id: int) -> tuple[int, object]:
 _ALLOWED_CONFIG_KEYS = {
     'terminology', 'nicknames', 'channel_tag', 'tone',
     'domain_description', 'content_types', 'jargon', 'emoji_legend',
-    'telegram_channel_id', 'prompts', 'gemini_api_key',
+    'telegram_channel_id', 'telegram_admin_chat_id', 'prompts', 'gemini_api_key',
     'publish_interval_minutes',
 }
 _ALLOWED_PROMPT_KEYS = {'researcher', 'writer', 'editor'}
@@ -153,6 +153,12 @@ def update_config(project_id: int, data: dict) -> tuple[int, object]:
         return 400, {'error': "domain_description matn bo'lishi kerak"}
     if 'telegram_channel_id' in patch and not isinstance(patch['telegram_channel_id'], str):
         return 400, {'error': "telegram_channel_id matn bo'lishi kerak (masalan @KanalNomi)"}
+    if 'telegram_admin_chat_id' in patch:
+        if not isinstance(patch['telegram_admin_chat_id'], str):
+            return 400, {'error': "telegram_admin_chat_id matn bo'lishi kerak (masalan 123456789 — /whoami orqali olinadi)"}
+        # Bo'sh qiymat — bog'lanishni butunlay olib tashlash (loyiha
+        # Telegram bot orqali boshqarilmasin desa).
+        patch['telegram_admin_chat_id'] = patch['telegram_admin_chat_id'].strip()
     if 'publish_interval_minutes' in patch:
         try:
             interval = int(patch['publish_interval_minutes'])

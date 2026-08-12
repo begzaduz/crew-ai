@@ -239,6 +239,17 @@ def handle_update(update: dict) -> None:
 
     text: str = (msg.get('text') or '').strip()
 
+    # MUHIM: bot buyruqlari endi BITTA global loyihaga (PROJECT_ID)
+    # qattiq bog'lanmagan — qaysi loyiha bilan ishlash kerakligi shu
+    # chat_id'ning Dashboard'da (workflows.config -> telegram_admin_
+    # chat_id) qaysi loyihaga bog'langaniga qarab DB'dan aniqlanadi.
+    # Hech qanday loyiha bu chatga bog'lanmagan bo'lsa (masalan hali
+    # sozlanmagan, yoki eski/yagona-loyiha o'rnatish), orqaga moslik
+    # uchun bootstrap qilingan asosiy loyihaga (PROJECT_ID) qaytiladi —
+    # bu "Ingliz Futboli" hech narsa qo'shimcha sozlamasdan ishlashda
+    # davom etishini kafolatlaydi.
+    project_id = database.get_project_id_by_telegram_admin_chat_id(chat_id) or PROJECT_ID
+
     try:
         if text == '/whoami':
             tg_send(chat_id, f'Sizning chat_id: {chat_id}')
@@ -250,7 +261,7 @@ def handle_update(update: dict) -> None:
 
         if text == '/start':
             tg_send(chat_id,
-                'Ingliz Futboli Bot v5.0\n\n'
+                'Studio Lab Bot v5.0\n\n'
                 '3 agent: Researcher + Writer + Editor\n'
                 '(terminologiya, taxalluslar va manbalar Dashboard orqali boshqariladi)\n\n'
                 'MUHIM: Bot endi kanalga hech narsani to\'g\'ridan-to\'g\'ri '
@@ -279,18 +290,18 @@ def handle_update(update: dict) -> None:
             if not is_admin(chat_id):
                 tg_send(chat_id, '⛔ Faqat adminlar uchun.')
                 return
-            ok_quota, used, limit = _quota_available(PROJECT_ID)
+            ok_quota, used, limit = _quota_available(project_id)
             if not ok_quota:
                 tg_send(chat_id, f'⛔ Bugungi API byudjeti tugadi ({used}/{limit}). Ertaga (Pacific vaqti bo\'yicha) tiklanadi.')
                 return
             tg_send(chat_id, '⏳ Yangilik olinayapti (3 agent ishlaydi)...')
-            ok = auto_news_post(PROJECT_ID)
+            ok = auto_news_post(project_id)
             tg_send(chat_id, '✅ Review Queue-ga qo\'shildi! Tasdiqlash uchun Dashboard: /studio' if ok
                     else '❌ Yangi yangilik topilmadi (yoki kvota tugagan).')
 
         elif text == '/stat':
             cnt, avg = get_stats()
-            used, limit = get_today_api_calls(PROJECT_ID), DAILY_API_LIMIT
+            used, limit = get_today_api_calls(project_id), DAILY_API_LIMIT
             tg_send(chat_id, f'📊 Bazada: {cnt} ta yangilik\nO\'rtacha ball: {avg}\n\n🔋 Bugungi API: {used}/{limit}')
 
         elif text == '/clearcache':
@@ -303,7 +314,7 @@ def handle_update(update: dict) -> None:
         elif text and not text.startswith('/'):
             if not is_admin(chat_id):
                 return
-            ok_quota, used, limit = _quota_available(PROJECT_ID)
+            ok_quota, used, limit = _quota_available(project_id)
             if not ok_quota:
                 tg_send(chat_id, f'⛔ Bugungi API byudjeti tugadi ({used}/{limit}). Ertaga (Pacific vaqti bo\'yicha) tiklanadi.')
                 return
@@ -317,21 +328,21 @@ def handle_update(update: dict) -> None:
                 # Matn boshqa tilda bo'lishi ham mumkin — pipeline avtomatik
                 # o'zbek tiliga tarjima qilib, kanalga mos formatga soladi.
                 article = {'title': text, 'description': '', 'url': None, 'score': 100}
-                post = generate_post(article, PROJECT_ID)
+                post = generate_post(article, project_id)
             except Exception as e:
-                increment_api_calls(PROJECT_ID, CALLS_PER_POST)
+                increment_api_calls(project_id, CALLS_PER_POST)
                 log.error(f'[Bot] Post yaratish xatosi (generate_post): {e}')
                 tg_send(chat_id, f'❌ Xatolik: {e}')
                 return
 
-            increment_api_calls(PROJECT_ID, CALLS_PER_POST)
+            increment_api_calls(project_id, CALLS_PER_POST)
 
             try:
                 # MUHIM: bu yerda kanalga to'g'ridan-to'g'ri yubormaymiz —
                 # Review Queue'ga qo'shamiz, faqat Dashboard'da tasdiqlangandan
                 # keyin kanalga ketadi.
                 asset = database.create_asset(
-                    project_id=PROJECT_ID, source_url=None, asset_type='manual',
+                    project_id=project_id, source_url=None, asset_type='manual',
                     title=text[:80], content=post, score=100, image_url=None,
                 )
             except Exception as e:

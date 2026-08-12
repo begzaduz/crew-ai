@@ -471,6 +471,30 @@ def get_workflow_config(project_id: int, wf_type: str = 'rss_news') -> dict:
         _put_conn(conn)
 
 
+def get_project_id_by_telegram_admin_chat_id(chat_id: int) -> int | None:
+    """Berilgan Telegram chat_id qaysi loyihaning 'telegram_admin_chat_id'
+    (workflows.config JSONB ichida, Dashboard'dan sozlanadi) qiymatiga
+    mos kelishini topadi. MUHIM: bu bot buyruqlarini (main.py) BITTA
+    global loyihaga (PROJECT_ID) qattiq bog'lab qo'yish o'rniga, DB
+    orqali dinamik aniqlash uchun — kelajakda Telegram'siz (botsiz)
+    loyihalar bo'lishi ham, ko'p loyiha bitta botni ulashishi ham
+    mumkin bo'lishi kerak. Hech qanday loyiha shu chat_id'ga
+    bog'lanmagan bo'lsa, None qaytaradi — chaqiruvchi orqaga moslik
+    uchun bootstrap qilingan asosiy loyihaga qaytishi kerak."""
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT project_id FROM workflows "
+                "WHERE config->>'telegram_admin_chat_id' = %s LIMIT 1",
+                (str(chat_id),),
+            )
+            row = cur.fetchone()
+            return int(row[0]) if row else None
+    finally:
+        _put_conn(conn)
+
+
 def set_workflow_config(project_id: int, config: dict, wf_type: str = 'rss_news') -> dict:
     """Config'ni to'liq almashtiradi (overwrite).
     MUHIM: jadvalda 'workflow_type' degan NOT NULL (standart qiymatsiz) ustun

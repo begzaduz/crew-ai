@@ -76,6 +76,39 @@ class TestProjectIsolation:
         p = database.get_or_create_project('unused-proj', 'Ishlatilmagan')
         assert database.get_today_api_calls(p['id']) == 0
 
+
+class TestTelegramAdminChatIdRouting:
+    """Bot buyruqlarini (main.py) BITTA global loyihaga qattiq
+    bog'lash o'rniga, chat_id orqali DB'dan dinamik loyiha topish —
+    kelajakda ko'p loyiha bitta botni ulashishi (yoki umuman Telegram
+    ishlatmasligi) uchun."""
+
+    def test_finds_project_by_admin_chat_id(self, clean_db):
+        p = database.get_or_create_project('tg-route-1', 'TG Route 1')
+        database.set_workflow_config(p['id'], {'telegram_admin_chat_id': '555111'})
+        found = database.get_project_id_by_telegram_admin_chat_id(555111)
+        assert found == p['id']
+
+    def test_returns_none_when_no_project_matches(self, clean_db):
+        database.get_or_create_project('tg-route-2', 'TG Route 2')
+        assert database.get_project_id_by_telegram_admin_chat_id(999999999) is None
+
+    def test_two_projects_route_to_different_ids(self, clean_db):
+        p1 = database.get_or_create_project('tg-route-a', 'TG Route A')
+        p2 = database.get_or_create_project('tg-route-b', 'TG Route B')
+        database.set_workflow_config(p1['id'], {'telegram_admin_chat_id': '111'})
+        database.set_workflow_config(p2['id'], {'telegram_admin_chat_id': '222'})
+
+        assert database.get_project_id_by_telegram_admin_chat_id(111) == p1['id']
+        assert database.get_project_id_by_telegram_admin_chat_id(222) == p2['id']
+
+    def test_unset_admin_chat_id_does_not_match_empty_string(self, clean_db):
+        # Loyiha telegram_admin_chat_id'ni umuman sozlamagan bo'lsa,
+        # bo'sh chat_id ('' yoki 0) bilan tasodifan mos kelib
+        # qolmasligi kerak.
+        database.get_or_create_project('tg-route-3', 'TG Route 3')
+        assert database.get_project_id_by_telegram_admin_chat_id(0) is None
+
     def test_update_workflow_config_merges_not_overwrites(self, clean_db):
         p = database.get_or_create_project('merge-test', 'Merge Test')
         database.set_workflow_config(p['id'], {
