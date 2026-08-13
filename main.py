@@ -228,11 +228,11 @@ def auto_news_post(project_id: int) -> bool:
 
 # ── Update handler ────────────────────────────────────────
 def handle_update(update: dict) -> None:
-    # Ingliz Futboli boti vaqtincha o'chirilgan bo'lishi mumkin
-    # (config.BOT_ENABLED — Railway env orqali boshqariladi). Bu holatda
-    # webhook so'rovi baribir 200 bilan qabul qilinadi (main.py'dagi
-    # do_POST), lekin hech qanday buyruqqa javob berilmaydi/hech narsa
-    # yaratilmaydi — Dashboard va boshqa loyihalarga ta'sir qilmaydi.
+    # Ingliz Futboli boti kodda shartsiz o'chirilgan (config.BOT_ENABLED =
+    # False, env'ga bog'liq emas). Webhook so'rovi baribir 200 bilan
+    # qabul qilinadi (main.py'dagi do_POST), lekin hech qanday buyruqqa
+    # javob berilmaydi/hech narsa yaratilmaydi — Dashboard va boshqa
+    # loyihalarga ta'sir qilmaydi.
     if not BOT_ENABLED:
         return
 
@@ -473,6 +473,12 @@ class WebhookHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b'OK')
+        # Bot shartsiz o'chirilgan bo'lsa (config.BOT_ENABLED = False),
+        # thread'ni umuman yaratmaymiz — handle_update() baribir darhol
+        # qaytadi, lekin bu yerda oldindan to'xtatish resurs isrofini
+        # ham oldini oladi.
+        if not BOT_ENABLED:
+            return
         try:
             update = json.loads(body)
             threading.Thread(target=handle_update, args=(update,), daemon=True).start()
