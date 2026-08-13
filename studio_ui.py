@@ -224,6 +224,11 @@ STUDIO_HTML = """<!DOCTYPE html>
   .kb-card[open] summary{ margin-bottom:10px; }
   .term-row{ display:grid; grid-template-columns:1fr 1fr auto; gap:7px; margin-bottom:5px; }
   .field-label{ font-size:10px; color:var(--text-faint); margin-bottom:3px; display:block; }
+  .cfg-grid{ display:grid; grid-template-columns:1fr 1fr; gap:0 12px; }
+  .cfg-field{ margin-bottom:10px; }
+  .cfg-field input, .cfg-field textarea{ width:100%; }
+  .cfg-status{ color:var(--green); font-weight:700; margin-left:4px; }
+  @media (max-width:520px){ .cfg-grid{ grid-template-columns:1fr; } }
 
   .toggle-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 0; }
   .toggle-row .toggle-copy{ flex:1; min-width:0; }
@@ -450,23 +455,39 @@ STUDIO_HTML = """<!DOCTYPE html>
       <details class="kb-card" open>
         <summary>Loyiha va kanal sozlamalari</summary>
         <div style="margin-top:10px">
-          <span class="field-label">Soha tavsifi (AI shu sohaning tahlilchisi/muharriri sifatida yozadi)</span>
-          <input type="text" id="domain-description" placeholder="masalan: Premier League football" style="margin-bottom:10px">
-          <span class="field-label">Telegram kanali (haqiqiy yuborish manzili — masalan @KanalNomi yoki -100...)</span>
-          <input type="text" id="telegram-channel-id" placeholder="@Inglizfutbol" style="margin-bottom:10px">
-          <span class="field-label">Bot admin chat_id (ixtiyoriy — shu chat orqali /yangilik, /stat kabi bot buyruqlari ANA SHU loyiha bilan ishlaydi. /whoami orqali oling)</span>
-          <input type="text" id="telegram-admin-chat-id" placeholder="123456789" style="margin-bottom:10px">
-          <span class="field-label">Kanalga yuborish uchun Telegram bot tokeni (ixtiyoriy — bo'lmasa umumiy "Ingliz Futboli" boti ishlatiladi). BotFather'dan oling, botni kanalga admin qilib qo'shing.</span>
-          <input type="text" id="telegram-bot-token" placeholder="123456789:AAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off" style="margin-bottom:2px">
-          <div style="font-size:10.5px; color:var(--text-faint); margin-bottom:10px">Faqat kanalga postlashtirish uchun — bot buyruqlariga (/yangilik va h.k.) bu tegishli emas. Bo'sh qoldirsangiz, saqlangan qiymat o'zgarmaydi.</div>
-          <span class="field-label">Kanal yorlig'i (postning oxiriga qo'shiladigan matn)</span>
-          <input type="text" id="channel-tag" placeholder="@Inglizfutbol" style="margin-bottom:10px">
-          <span class="field-label">Uslub (tone)</span>
-          <textarea id="tone-field" placeholder="professional uslubda, aniq va ishonchli..." style="min-height:44px"></textarea>
-          <span class="field-label" id="gemini-key-label">Gemini API kalit (ixtiyoriy — bo'lmasa umumiy kalit ishlatiladi)</span>
-          <input type="text" id="gemini-api-key" placeholder="AQ.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off" style="margin-bottom:2px">
-          <div style="font-size:10.5px; color:var(--text-faint); margin-bottom:10px">Bu loyiha shu kalit orqali ishlaydi va boshqa loyihalarning kunlik Gemini limitiga ta'sir qilmaydi. Bo'sh qoldirsangiz, saqlangan qiymat o'zgarmaydi.</div>
-          <div style="margin-top:10px"><button class="btn btn-gold" onclick="saveChannelSettings()">Saqlash</button></div>
+          <div class="cfg-grid">
+            <div class="cfg-field">
+              <span class="field-label">Soha tavsifi</span>
+              <input type="text" id="domain-description" placeholder="masalan: Premier League football">
+            </div>
+            <div class="cfg-field">
+              <span class="field-label">Telegram kanali</span>
+              <input type="text" id="telegram-channel-id" placeholder="@KanalNomi">
+            </div>
+            <div class="cfg-field">
+              <span class="field-label">Admin chat_id</span>
+              <input type="text" id="telegram-admin-chat-id" placeholder="/whoami orqali oling">
+            </div>
+            <div class="cfg-field">
+              <span class="field-label">Kanal yorlig'i</span>
+              <input type="text" id="channel-tag" placeholder="@KanalNomi">
+            </div>
+          </div>
+          <div class="cfg-field">
+            <span class="field-label">Uslub</span>
+            <textarea id="tone-field" placeholder="masalan: bloger uslubi, keskin" style="min-height:44px"></textarea>
+          </div>
+          <div class="cfg-grid">
+            <div class="cfg-field">
+              <span class="field-label">Bot tokeni <span class="cfg-status" id="bot-token-status"></span></span>
+              <input type="text" id="telegram-bot-token" placeholder="123456789:AA..." autocomplete="off">
+            </div>
+            <div class="cfg-field">
+              <span class="field-label">Gemini API kalit <span class="cfg-status" id="gemini-key-status"></span></span>
+              <input type="text" id="gemini-api-key" placeholder="AQ.xxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+            </div>
+          </div>
+          <button class="btn btn-gold" onclick="saveChannelSettings()">Saqlash</button>
         </div>
       </details>
 
@@ -1493,14 +1514,12 @@ STUDIO_HTML = """<!DOCTYPE html>
       document.getElementById('tone-field').value = cfg.tone || '';
       const keyInput = document.getElementById('gemini-api-key');
       keyInput.value = '';
-      keyInput.placeholder = cfg.gemini_api_key_set
-        ? `saqlangan: ••••${cfg.gemini_api_key_hint || ''} (o'zgartirish uchun yangisini yozing)`
-        : 'AQ.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx (bo\\'lmasa umumiy kalit ishlatiladi)';
+      keyInput.placeholder = cfg.gemini_api_key_set ? `•••• ${cfg.gemini_api_key_hint || ''}` : 'AQ.xxxxxxxxxxxxxxxxxxxx';
+      document.getElementById('gemini-key-status').textContent = cfg.gemini_api_key_set ? '✓' : '';
       const botTokenInput = document.getElementById('telegram-bot-token');
       botTokenInput.value = '';
-      botTokenInput.placeholder = cfg.telegram_bot_token_set
-        ? `saqlangan: ••••${cfg.telegram_bot_token_hint || ''} (o'zgartirish uchun yangisini yozing)`
-        : "123456789:AAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx (bo'lmasa umumiy bot ishlatiladi)";
+      botTokenInput.placeholder = cfg.telegram_bot_token_set ? `•••• ${cfg.telegram_bot_token_hint || ''}` : '123456789:AA...';
+      document.getElementById('bot-token-status').textContent = cfg.telegram_bot_token_set ? '✓' : '';
     } catch (e) {
       toast('Config yuklanmadi');
     }
