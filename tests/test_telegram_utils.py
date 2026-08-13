@@ -48,3 +48,41 @@ class TestSanitizeDisallowedTags:
 
     def test_empty_string_returns_as_is(self):
         assert sanitize_telegram_html('') == ''
+
+
+class TestTgChannelBotTokenRouting:
+    """MUHIM: har loyiha o'z Telegram bot tokenini DB orqali sozlashi
+    mumkin (gemini_api_key bilan bir xil naqsh) — kodga hech qanday bot
+    qattiq bog'lanmasligi kerak."""
+
+    def test_uses_project_bot_token_when_given(self, monkeypatch):
+        import telegram_utils
+        captured = {}
+
+        class FakeResponse:
+            def json(self):
+                return {'ok': True}
+
+        def fake_post(url, json=None, timeout=None):
+            captured['url'] = url
+            return FakeResponse()
+
+        monkeypatch.setattr(telegram_utils.requests, 'post', fake_post)
+        telegram_utils.tg_channel('Test post text here', chat_id='@SomeChannel', bot_token='111:CUSTOMTOKEN')
+        assert '/bot111:CUSTOMTOKEN/' in captured['url']
+
+    def test_falls_back_to_global_token_when_not_given(self, monkeypatch):
+        import telegram_utils
+        captured = {}
+
+        class FakeResponse:
+            def json(self):
+                return {'ok': True}
+
+        def fake_post(url, json=None, timeout=None):
+            captured['url'] = url
+            return FakeResponse()
+
+        monkeypatch.setattr(telegram_utils.requests, 'post', fake_post)
+        telegram_utils.tg_channel('Test post text here', chat_id='@SomeChannel')
+        assert f'/bot{telegram_utils.TOKEN}/' in captured['url']

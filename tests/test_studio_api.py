@@ -128,7 +128,7 @@ class TestApproveAssetChannelRouting:
 
         captured = {}
 
-        def fake_tg_channel(text, image_url=None, chat_id=None):
+        def fake_tg_channel(text, image_url=None, chat_id=None, bot_token=None):
             captured['chat_id'] = chat_id
             return {'ok': True}
 
@@ -150,7 +150,7 @@ class TestApproveAssetChannelRouting:
 
         captured = {}
 
-        def fake_tg_channel(text, image_url=None, chat_id=None):
+        def fake_tg_channel(text, image_url=None, chat_id=None, bot_token=None):
             captured['chat_id'] = chat_id
             return {'ok': True}
 
@@ -158,6 +158,51 @@ class TestApproveAssetChannelRouting:
             studio_api.approve_asset({'id': asset['id']})
 
         assert captured['chat_id'] is None
+
+    def test_approve_uses_asset_owner_project_bot_token(self, clean_db):
+        project = database.get_or_create_project('own-bot', 'Own Bot Co')
+        database.set_workflow_config(project['id'], {
+            'telegram_channel_id': '@OwnBotChannel',
+            'telegram_bot_token': '111111:OWNTOKEN',
+        })
+        asset = database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title='Test', content='Test post content that is long enough to pass validation checks here.',
+            score=0,
+        )
+
+        captured = {}
+
+        def fake_tg_channel(text, image_url=None, chat_id=None, bot_token=None):
+            captured['bot_token'] = bot_token
+            return {'ok': True}
+
+        with patch.object(studio_api.telegram_utils, 'tg_channel', side_effect=fake_tg_channel):
+            status, payload = studio_api.approve_asset({'id': asset['id']})
+
+        assert status == 200
+        assert captured['bot_token'] == '111111:OWNTOKEN'
+
+    def test_approve_falls_back_to_none_bot_token_when_not_configured(self, clean_db):
+        # telegram_bot_token sozlanmagan bo'lsa, tg_channel()ning o'z
+        # global TOKEN fallback'iga tayanamiz (bot_token=None uzatiladi).
+        project = database.get_or_create_project('no-own-bot', 'No Own Bot')
+        asset = database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title='Test', content='Test post content that is long enough to pass validation checks here.',
+            score=0,
+        )
+
+        captured = {}
+
+        def fake_tg_channel(text, image_url=None, chat_id=None, bot_token=None):
+            captured['bot_token'] = bot_token
+            return {'ok': True}
+
+        with patch.object(studio_api.telegram_utils, 'tg_channel', side_effect=fake_tg_channel):
+            studio_api.approve_asset({'id': asset['id']})
+
+        assert captured['bot_token'] is None
 
     def test_cannot_approve_already_published_asset(self, clean_db):
         project = database.get_or_create_project('dup-approve', 'Dup Test')
@@ -449,6 +494,45 @@ class TestUpdateConfig:
             'telegram_channel_id': '@Test',
         })
         assert status == 200
+
+
+class TestTelegramBotTokenConfig:
+    """telegram_bot_token — gemini_api_key bilan bir xil naqsh: DB'da
+    saqlanadi, Dashboard'ga to'liq qaytarilmaydi, bo'sh yuborilsa
+    saqlangan qiymatga tegilmaydi."""
+
+    def test_saves_and_is_hidden_from_get_config(self, clean_db):
+        project = database.get_or_create_project('bot-token-1', 'Bot Token 1')
+        status, _ = studio_api.update_config(project['id'], {'telegram_bot_token': '999:SECRETTOKEN'})
+        assert status == 200
+
+        status, cfg = studio_api.get_config(project['id'])
+        assert status == 200
+        assert 'telegram_bot_token' not in cfg
+        assert cfg['telegram_bot_token_set'] is True
+        assert cfg['telegram_bot_token_hint'] == 'OKEN'
+
+    def test_not_set_reports_false(self, clean_db):
+        project = database.get_or_create_project('bot-token-2', 'Bot Token 2')
+        status, cfg = studio_api.get_config(project['id'])
+        assert status == 200
+        assert cfg['telegram_bot_token_set'] is False
+        assert cfg['telegram_bot_token_hint'] == ''
+
+    def test_empty_value_does_not_overwrite_saved_token(self, clean_db):
+        project = database.get_or_create_project('bot-token-3', 'Bot Token 3')
+        studio_api.update_config(project['id'], {'telegram_bot_token': '999:SECRETTOKEN'})
+        status, _ = studio_api.update_config(project['id'], {
+            'telegram_bot_token': '', 'domain_description': 'still saves other fields',
+        })
+        assert status == 200
+        _, cfg = studio_api.get_config(project['id'])
+        assert cfg['telegram_bot_token_set'] is True
+
+    def test_rejects_non_string_token(self, clean_db):
+        project = database.get_or_create_project('bot-token-4', 'Bot Token 4')
+        status, payload = studio_api.update_config(project['id'], {'telegram_bot_token': 12345})
+        assert status == 400
 
 
 class TestSubmitManualContentApiCallAccounting:

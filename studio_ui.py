@@ -456,6 +456,9 @@ STUDIO_HTML = """<!DOCTYPE html>
           <input type="text" id="telegram-channel-id" placeholder="@Inglizfutbol" style="margin-bottom:10px">
           <span class="field-label">Bot admin chat_id (ixtiyoriy — shu chat orqali /yangilik, /stat kabi bot buyruqlari ANA SHU loyiha bilan ishlaydi. /whoami orqali oling)</span>
           <input type="text" id="telegram-admin-chat-id" placeholder="123456789" style="margin-bottom:10px">
+          <span class="field-label">Kanalga yuborish uchun Telegram bot tokeni (ixtiyoriy — bo'lmasa umumiy "Ingliz Futboli" boti ishlatiladi). BotFather'dan oling, botni kanalga admin qilib qo'shing.</span>
+          <input type="text" id="telegram-bot-token" placeholder="123456789:AAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off" style="margin-bottom:2px">
+          <div style="font-size:10.5px; color:var(--text-faint); margin-bottom:10px">Faqat kanalga postlashtirish uchun — bot buyruqlariga (/yangilik va h.k.) bu tegishli emas. Bo'sh qoldirsangiz, saqlangan qiymat o'zgarmaydi.</div>
           <span class="field-label">Kanal yorlig'i (postning oxiriga qo'shiladigan matn)</span>
           <input type="text" id="channel-tag" placeholder="@Inglizfutbol" style="margin-bottom:10px">
           <span class="field-label">Uslub (tone)</span>
@@ -1462,13 +1465,15 @@ STUDIO_HTML = """<!DOCTYPE html>
     const channel_tag = document.getElementById('channel-tag').value.trim();
     const telegram_channel_id = document.getElementById('telegram-channel-id').value.trim();
     const telegram_admin_chat_id = document.getElementById('telegram-admin-chat-id').value.trim();
+    const telegram_bot_token = document.getElementById('telegram-bot-token').value.trim();
     const tone = document.getElementById('tone-field').value.trim();
     const gemini_api_key = document.getElementById('gemini-api-key').value.trim();
-    const res = await apiPost('/api/studio/config', { domain_description, channel_tag, telegram_channel_id, telegram_admin_chat_id, tone, gemini_api_key });
+    const res = await apiPost('/api/studio/config', { domain_description, channel_tag, telegram_channel_id, telegram_admin_chat_id, telegram_bot_token, tone, gemini_api_key });
     const data = await res.json();
     if (!res.ok) { toast(data.error || 'Xatolik'); return; }
     toast('Saqlandi');
     document.getElementById('gemini-api-key').value = '';
+    document.getElementById('telegram-bot-token').value = '';
     loadConfig();
   }
 
@@ -1491,6 +1496,11 @@ STUDIO_HTML = """<!DOCTYPE html>
       keyInput.placeholder = cfg.gemini_api_key_set
         ? `saqlangan: ••••${cfg.gemini_api_key_hint || ''} (o'zgartirish uchun yangisini yozing)`
         : 'AQ.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx (bo\\'lmasa umumiy kalit ishlatiladi)';
+      const botTokenInput = document.getElementById('telegram-bot-token');
+      botTokenInput.value = '';
+      botTokenInput.placeholder = cfg.telegram_bot_token_set
+        ? `saqlangan: ••••${cfg.telegram_bot_token_hint || ''} (o'zgartirish uchun yangisini yozing)`
+        : "123456789:AAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx (bo'lmasa umumiy bot ishlatiladi)";
     } catch (e) {
       toast('Config yuklanmadi');
     }

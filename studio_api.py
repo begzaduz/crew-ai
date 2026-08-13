@@ -120,6 +120,12 @@ def get_config(project_id: int) -> tuple[int, object]:
         raw_key = cfg.pop('gemini_api_key', None)
         cfg['gemini_api_key_set'] = bool(raw_key)
         cfg['gemini_api_key_hint'] = raw_key[-4:] if raw_key else ''
+        # Telegram bot tokeni ham xuddi Gemini kalit kabi — to'liq holda
+        # Dashboard'ga qaytarilmaydi (Network panelida ko'rinib qolmasin),
+        # faqat o'rnatilganmi degan belgi va oxirgi 4 belgi ko'rsatiladi.
+        raw_bot_token = cfg.pop('telegram_bot_token', None)
+        cfg['telegram_bot_token_set'] = bool(raw_bot_token)
+        cfg['telegram_bot_token_hint'] = raw_bot_token[-4:] if raw_bot_token else ''
         return 200, cfg
     except Exception as e:
         log.error(f'[StudioAPI] get_config: {e}')
@@ -129,8 +135,8 @@ def get_config(project_id: int) -> tuple[int, object]:
 _ALLOWED_CONFIG_KEYS = {
     'terminology', 'nicknames', 'channel_tag', 'tone',
     'domain_description', 'content_types', 'jargon', 'emoji_legend',
-    'telegram_channel_id', 'telegram_admin_chat_id', 'prompts', 'gemini_api_key',
-    'publish_interval_minutes',
+    'telegram_channel_id', 'telegram_admin_chat_id', 'telegram_bot_token',
+    'prompts', 'gemini_api_key', 'publish_interval_minutes',
 }
 _ALLOWED_PROMPT_KEYS = {'researcher', 'writer', 'editor'}
 
@@ -175,6 +181,13 @@ def update_config(project_id: int, data: dict) -> tuple[int, object]:
         # tegilmaydi.
         if not patch['gemini_api_key'].strip():
             del patch['gemini_api_key']
+    if 'telegram_bot_token' in patch:
+        if not isinstance(patch['telegram_bot_token'], str):
+            return 400, {'error': "telegram_bot_token matn bo'lishi kerak"}
+        # gemini_api_key bilan bir xil naqsh: bo'sh qiymat = "o'zgartirmayman"
+        # (frontend parol maydonini bo'sh qoldirsa yuboradi).
+        if not patch['telegram_bot_token'].strip():
+            del patch['telegram_bot_token']
     if 'prompts' in patch:
         if not isinstance(patch['prompts'], dict):
             return 400, {'error': "prompts obyekt (researcher/writer/editor) bo'lishi kerak"}
@@ -327,9 +340,15 @@ def _publish_asset_now(asset: dict, reviewer: str = 'dashboard', notes: str = ''
     # kanaliga tasodifan chiqib qolmasligi uchun).
     owner_config = database.get_workflow_config(asset['project_id'])
     target_channel = owner_config.get('telegram_channel_id') or None
+    # Loyihaning o'z Telegram bot tokeni bo'lsa, shu orqali yuboriladi
+    # (gemini_api_key bilan bir xil naqsh — DB-driven, kodga hech qanday
+    # bot qattiq bog'lanmagan). Bo'lmasa, tg_channel() o'zi global TOKEN
+    # (.env — "Ingliz Futboli" loyiha boti)ga fallback qiladi.
+    bot_token = owner_config.get('telegram_bot_token') or None
 
     result = telegram_utils.tg_channel(
         asset['content'], image_url=asset.get('image_url'), chat_id=target_channel,
+        bot_token=bot_token,
     )
     if not result.get('ok'):
         log.error(f'[StudioAPI] _publish_asset_now: TG xato: {result.get("description")}')

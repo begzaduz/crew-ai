@@ -92,7 +92,8 @@ def _clean_post(post: str) -> str:
     return '\n'.join(cleaned)
 
 
-def tg_channel(text: str, image_url: str | None = None, chat_id: str | int | None = None) -> dict:
+def tg_channel(text: str, image_url: str | None = None, chat_id: str | int | None = None,
+                bot_token: str | None = None) -> dict:
     """
     Kanalga yuborish (FAQAT Dashboard'da 'Tasdiqlash' bosilganda chaqiriladi):
     - image_url bo'lsa: sendPhoto (rasm + caption HTML)
@@ -100,16 +101,26 @@ def tg_channel(text: str, image_url: str | None = None, chat_id: str | int | Non
 
     chat_id — loyihaning o'z Telegram kanali (workflows.config'dagi
     'telegram_channel_id'). Berilmasa (masalan hali sozlanmagan eski
-    loyiha bo'lsa), global CHANNEL (.env) ishlatiladi — bitta bot bir
-    nechta kanalga xizmat qila oladi, har bir loyiha o'z manziliga.
+    loyiha bo'lsa), global CHANNEL (.env) ishlatiladi.
+
+    bot_token — loyihaning O'Z Telegram bot tokeni (workflows.config'dagi
+    'telegram_bot_token', gemini_api_key bilan bir xil naqsh: har loyiha
+    DB orqali o'z botini sozlashi mumkin, kodga hech qanday bot qattiq
+    bog'lanmagan). Berilmasa, global TOKEN (.env — "Ingliz Futboli" o'z
+    loyiha boti) ishlatiladi — orqaga moslik, eski loyihalarga ta'sir
+    qilmaydi. MUHIM: bu faqat KANALGA YUBORISH uchun — bot buyruqlariga
+    javob (tg_send) har doim global TOKEN bilan ishlaydi, chunki admin
+    buyruqlar (masalan /yangilik) doim "Ingliz Futboli" loyiha botiga
+    keladi.
     """
     text = _clean_post(text)
     target = chat_id or CHANNEL
+    token = bot_token or TOKEN
 
     if image_url:
         caption = text[:1024]
         res = requests.post(
-            f'https://api.telegram.org/bot{TOKEN}/sendPhoto',
+            f'https://api.telegram.org/bot{token}/sendPhoto',
             json={
                 'chat_id': target,
                 'photo': image_url,
@@ -121,11 +132,11 @@ def tg_channel(text: str, image_url: str | None = None, chat_id: str | int | Non
         result = res.json()
         if not result.get('ok'):
             log.warning(f'[TG] sendPhoto xato: {result.get("description")} — matn sifatida yuborilmoqda')
-            return tg_channel(text, image_url=None, chat_id=chat_id)
+            return tg_channel(text, image_url=None, chat_id=chat_id, bot_token=bot_token)
         return result
     else:
         res = requests.post(
-            f'https://api.telegram.org/bot{TOKEN}/sendMessage',
+            f'https://api.telegram.org/bot{token}/sendMessage',
             json={
                 'chat_id': target,
                 'text': text,
