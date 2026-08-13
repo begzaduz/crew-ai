@@ -10,7 +10,7 @@ from urllib.parse import urlparse, parse_qs
 
 from config import (
     ADMIN_IDS, PORT, INTERVAL, WEBHOOK_SECRET, DAILY_POST_BUDGET,
-    DASHBOARD_USER, DASHBOARD_PASSWORD,
+    DASHBOARD_USER, DASHBOARD_PASSWORD, BOT_ENABLED, MINI_APP_ENABLED,
 )
 import database
 from database import (
@@ -228,6 +228,14 @@ def auto_news_post(project_id: int) -> bool:
 
 # ── Update handler ────────────────────────────────────────
 def handle_update(update: dict) -> None:
+    # Ingliz Futboli boti vaqtincha o'chirilgan bo'lishi mumkin
+    # (config.BOT_ENABLED — Railway env orqali boshqariladi). Bu holatda
+    # webhook so'rovi baribir 200 bilan qabul qilinadi (main.py'dagi
+    # do_POST), lekin hech qanday buyruqqa javob berilmaydi/hech narsa
+    # yaratilmaydi — Dashboard va boshqa loyihalarga ta'sir qilmaydi.
+    if not BOT_ENABLED:
+        return
+
     msg = update.get('message')
     if not msg:
         return
@@ -530,6 +538,9 @@ class WebhookHandler(BaseHTTPRequestHandler):
             return
 
         if path == '/api/posts':
+            if not MINI_APP_ENABLED:
+                self._json({'error': 'Mini App vaqtincha ishlamayapti'}, status=503, cors=True)
+                return
             qs = parse_qs(parsed.query)
             pid = _resolve_project_id({k: v[0] for k, v in qs.items()})
             try:
@@ -541,6 +552,9 @@ class WebhookHandler(BaseHTTPRequestHandler):
             return
 
         if path == '/api/standings':
+            if not MINI_APP_ENABLED:
+                self._json({'error': 'Mini App vaqtincha ishlamayapti'}, status=503, cors=True)
+                return
             try:
                 rows = fetch_standings()
                 self._json(rows, cors=True)
@@ -550,6 +564,9 @@ class WebhookHandler(BaseHTTPRequestHandler):
             return
 
         if path == '/api/matches':
+            if not MINI_APP_ENABLED:
+                self._json({'error': 'Mini App vaqtincha ishlamayapti'}, status=503, cors=True)
+                return
             qs = parse_qs(parsed.query)
             date_str = (qs.get('date') or [''])[0]
             if not date_str:
@@ -564,6 +581,12 @@ class WebhookHandler(BaseHTTPRequestHandler):
             return
 
         if path in ('/', '/webapp', '/webapp/'):
+            if not MINI_APP_ENABLED:
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/plain; charset=utf-8')
+                self.end_headers()
+                self.wfile.write('Mini App vaqtincha ishlamayapti. Tez orada qaytadi.'.encode('utf-8'))
+                return
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
             self.end_headers()

@@ -44,6 +44,26 @@ PUBLIC_BASE_URL = os.getenv('PUBLIC_BASE_URL', '').rstrip('/')
 DASHBOARD_USER     = os.getenv('DASHBOARD_USER', 'admin')
 DASHBOARD_PASSWORD = os.getenv('DASHBOARD_PASSWORD', '')
 
+# ── Ingliz Futboli: bot va Mini App vaqtincha o'chirilishi ────────
+# Loyihaga hali rasman start berilmagan — Dashboard (control plane)
+# ishlashda davom etadi, lekin Telegram bot (handle_update) va Mini App
+# (webapp.py + /api/posts, /api/matches, /api/standings) kerak bo'lguncha
+# to'xtatib qo'yiladi. Standart holat — YOQILGAN (True), orqaga moslik
+# uchun: hech qanday env sozlanmagan boshqa muhitlarda (masalan lokal
+# ishlab chiqish, kelajakdagi loyihalar) hech narsa o'zgarmaydi. Qayta
+# yoqish uchun Railway'da shu ikkala env o'zgaruvchisini o'chirish yoki
+# 'true'ga o'rnatish kifoya — kod o'zgartirish yoki qayta deploy shart
+# emas.
+def _env_bool(key: str, default: bool) -> bool:
+    val = os.getenv(key)
+    if val is None:
+        return default
+    return val.strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+BOT_ENABLED      = _env_bool('BOT_ENABLED', True)
+MINI_APP_ENABLED = _env_bool('MINI_APP_ENABLED', True)
+
 # ── Server ────────────────────────────────────────────────
 PORT = int(os.getenv('PORT', 8080))
 
