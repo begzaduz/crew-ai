@@ -10,20 +10,15 @@ import re
 
 import database
 import telegram_utils
-from config import DAILY_POST_BUDGET, INTERVAL, PUBLIC_BASE_URL
+from config import DAILY_POST_BUDGET, INTERVAL, PUBLIC_BASE_URL, CALLS_PER_POST, DAILY_API_LIMIT
 from workflows.rss_news import (
     RESEARCHER_PROMPT_TEMPLATE, WRITER_PROMPT_TEMPLATE, EDITOR_PROMPT_TEMPLATE,
 )
 
 log = logging.getLogger(__name__)
 
-# Pipeline 3 ta agent (Researcher+Writer+Editor) ishlatadi — har bir
-# generate_post() chaqiruvi ~3 ta Gemini API chaqiruvi sarflaydi.
-# (main.py'dagi CALLS_PER_POST/DAILY_API_LIMIT bilan bir xil hisob —
-# takrorlanadi, chunki main.py'ni bu yerdan import qilib bo'lmaydi
-# (circular import): main.py studio_api.py'ni import qiladi.)
-CALLS_PER_POST = 3
-DAILY_API_LIMIT = DAILY_POST_BUDGET * CALLS_PER_POST
+# CALLS_PER_POST/DAILY_API_LIMIT — config.py'dan import qilinadi (yagona
+# joy, main.py ham shu yerdan oladi — avval ikkalasi mustaqil hisoblardi).
 
 
 # ── Data manbalar (RSS) ────────────────────────────────────

@@ -23,9 +23,15 @@ _FEED_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 # yoziladigan) standart ro'yxat. Runtime'da fetch_news() BU o'zgaruvchini
 # ishlatmaydi — chaqiruvchi (main.py) manbalarni har doim DB'dagi
 # data_sources jadvalidan olib, parametr sifatida beradi.
+#
+# MUHIM: BBC Sport Football birinchi (asosiy) o'ringa qo'yilgan — real
+# ishlab chiqishda tasdiqlangan ishlaydigan yagona manba (_FEED_USER_AGENT
+# bilan). Sky Sports RSS'i bloklanishi aniqlangani uchun ro'yxatdan olib
+# tashlangan — yangi loyiha uni ishlamaydigan manba bilan boshlamasligi
+# uchun.
 DEFAULT_RSS_FEEDS = [
+    'https://feeds.bbci.co.uk/sport/football/rss.xml',
     'https://www.theguardian.com/football/premierleague/rss',
-    'https://www.skysports.com/rss/12040',
     'https://www.90min.com/posts.rss',
     'https://www.caughtoffside.com/feed',
 ]

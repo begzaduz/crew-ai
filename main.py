@@ -10,7 +10,7 @@ from urllib.parse import urlparse, parse_qs
 
 from config import (
     ADMIN_IDS, PORT, INTERVAL, DAILY_POST_BUDGET,
-    DASHBOARD_USER, DASHBOARD_PASSWORD,
+    DASHBOARD_USER, DASHBOARD_PASSWORD, CALLS_PER_POST, DAILY_API_LIMIT,
 )
 import database
 from database import (
@@ -31,12 +31,6 @@ log = logging.getLogger(__name__)
 
 # Bir vaqtda faqat bitta auto_news_post() ishlashi uchun
 _news_lock = threading.Lock()
-
-# Pipeline'da 3 ta agent (Researcher+Writer+Editor) ishlaydi,
-# demak har bir post urinishi taxminan 3 ta Gemini API chaqiruvini
-# sarflaydi. Shu asosda kunlik xavfsiz limit hisoblanadi.
-CALLS_PER_POST = 3
-DAILY_API_LIMIT = DAILY_POST_BUDGET * CALLS_PER_POST
 
 # "Ingliz Futboli" loyihasining DB dagi identifikatori. Server ishga
 # tushganda _bootstrap_project() orqali to'ldiriladi (project mavjud

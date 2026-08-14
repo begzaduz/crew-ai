@@ -48,6 +48,14 @@ INTERVAL = 4 * 60 * 60
 ARTICLE_MAX_AGE_HOURS = 48
 DAILY_POST_BUDGET = 6
 
+# Pipeline'da 3 ta agent (Researcher+Writer+Editor) ishlaydi, demak har
+# bir post urinishi taxminan 3 ta Gemini API chaqiruvini sarflaydi. Shu
+# asosda kunlik xavfsiz ichki limit hisoblanadi. MUHIM: bu yagona joy —
+# avval main.py va studio_api.py ikkalasi ham mustaqil hisoblardi
+# (circular import sababli), endi ikkalasi ham shu yerdan import qiladi.
+CALLS_PER_POST = 3
+DAILY_API_LIMIT = DAILY_POST_BUDGET * CALLS_PER_POST
+
 # ── Scoring ───────────────────────────────────────────────
 MIN_SCORE = 20
 
