@@ -492,6 +492,34 @@ STUDIO_HTML = """<!DOCTYPE html>
       </details>
 
       <details class="kb-card">
+        <summary>Format qoidalari</summary>
+        <div style="margin-top:10px">
+          <div class="toggle-row">
+            <div class="toggle-copy">
+              <div class="toggle-title">Sarlavhani qalin (bold) qilish</div>
+              <div class="toggle-desc">Postning birinchi qatori (sarlavha) Telegram'da &lt;b&gt;qalin&lt;/b&gt; ko'rinishda chiqadi</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="bold-title-toggle" checked>
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+          <div class="cfg-grid" style="margin-top:6px">
+            <div class="cfg-field">
+              <span class="field-label">Minimal uzunlik (belgi)</span>
+              <input type="text" id="min-length-field" placeholder="50" inputmode="numeric">
+            </div>
+            <div class="cfg-field">
+              <span class="field-label">Maksimal uzunlik (belgi)</span>
+              <input type="text" id="max-length-field" placeholder="1000" inputmode="numeric">
+            </div>
+          </div>
+          <div style="font-size:10.5px; color:var(--text-faint); margin-top:-4px; margin-bottom:10px">Telegram xabar chegarasi: 4096 belgi. Bu qiymatlar shundan oshsa saqlanmaydi.</div>
+          <button class="btn btn-gold" onclick="saveFormatRules()">Saqlash</button>
+        </div>
+      </details>
+
+      <details class="kb-card">
         <summary>Kontent turlari <span class="count" id="ctypes-count"></span></summary>
         <div id="ctypes-rows"></div>
         <div style="display:flex; gap:8px; margin-top:8px">
@@ -1514,6 +1542,20 @@ STUDIO_HTML = """<!DOCTYPE html>
     loadConfig();
   }
 
+  async function saveFormatRules() {
+    const bold_title = document.getElementById('bold-title-toggle').checked;
+    const minRaw = document.getElementById('min-length-field').value.trim();
+    const maxRaw = document.getElementById('max-length-field').value.trim();
+    const min_length = minRaw === '' ? 50 : parseInt(minRaw, 10);
+    const max_length = maxRaw === '' ? 1000 : parseInt(maxRaw, 10);
+    if (Number.isNaN(min_length) || Number.isNaN(max_length)) { toast("Uzunlik butun son bo'lishi kerak"); return; }
+    const res = await apiPost('/api/studio/config', { bold_title, min_length, max_length });
+    const data = await res.json();
+    if (!res.ok) { toast(data.error || 'Xatolik'); return; }
+    toast('Saqlandi');
+    loadConfig();
+  }
+
   async function loadConfig() {
     try {
       const res = await apiGet('/api/studio/config');
@@ -1528,6 +1570,9 @@ STUDIO_HTML = """<!DOCTYPE html>
       document.getElementById('telegram-channel-id').value = cfg.telegram_channel_id || '';
       document.getElementById('telegram-admin-chat-id').value = cfg.telegram_admin_chat_id || '';
       document.getElementById('tone-field').value = cfg.tone || '';
+      document.getElementById('bold-title-toggle').checked = cfg.bold_title !== false;
+      document.getElementById('min-length-field').value = cfg.min_length ?? 50;
+      document.getElementById('max-length-field').value = cfg.max_length ?? 1000;
       const keyInput = document.getElementById('gemini-api-key');
       keyInput.value = '';
       keyInput.placeholder = cfg.gemini_api_key_set ? `•••• ${cfg.gemini_api_key_hint || ''}` : 'AQ.xxxxxxxxxxxxxxxxxxxx';

@@ -128,7 +128,7 @@ class TestApproveAssetChannelRouting:
 
         captured = {}
 
-        def fake_tg_channel(text, image_url=None, chat_id=None, bot_token=None):
+        def fake_tg_channel(text, image_url=None, chat_id=None, bot_token=None, bold_title=True):
             captured['chat_id'] = chat_id
             return {'ok': True}
 
@@ -150,7 +150,7 @@ class TestApproveAssetChannelRouting:
 
         captured = {}
 
-        def fake_tg_channel(text, image_url=None, chat_id=None, bot_token=None):
+        def fake_tg_channel(text, image_url=None, chat_id=None, bot_token=None, bold_title=True):
             captured['chat_id'] = chat_id
             return {'ok': True}
 
@@ -173,7 +173,7 @@ class TestApproveAssetChannelRouting:
 
         captured = {}
 
-        def fake_tg_channel(text, image_url=None, chat_id=None, bot_token=None):
+        def fake_tg_channel(text, image_url=None, chat_id=None, bot_token=None, bold_title=True):
             captured['bot_token'] = bot_token
             return {'ok': True}
 
@@ -195,7 +195,7 @@ class TestApproveAssetChannelRouting:
 
         captured = {}
 
-        def fake_tg_channel(text, image_url=None, chat_id=None, bot_token=None):
+        def fake_tg_channel(text, image_url=None, chat_id=None, bot_token=None, bold_title=True):
             captured['bot_token'] = bot_token
             return {'ok': True}
 
@@ -494,6 +494,110 @@ class TestUpdateConfig:
             'telegram_channel_id': '@Test',
         })
         assert status == 200
+
+
+class TestFormatRulesConfig:
+    """bold_title/min_length/max_length — ilgari kodga qattiq yozilgan
+    (har doim yoqiq bold, 50/1000 belgi) format elementlari, endi
+    DB-driven (Dashboard -> Knowledge Base -> Format qoidalari)."""
+
+    def test_saves_bold_title_false(self, clean_db):
+        project = database.get_or_create_project('fmt-1', 'Fmt 1')
+        status, cfg = studio_api.update_config(project['id'], {'bold_title': False})
+        assert status == 200
+        assert cfg['bold_title'] is False
+
+    def test_rejects_non_bool_bold_title(self, clean_db):
+        project = database.get_or_create_project('fmt-2', 'Fmt 2')
+        status, payload = studio_api.update_config(project['id'], {'bold_title': 'yes'})
+        assert status == 400
+
+    def test_saves_custom_min_max_length(self, clean_db):
+        project = database.get_or_create_project('fmt-3', 'Fmt 3')
+        status, cfg = studio_api.update_config(project['id'], {'min_length': 20, 'max_length': 300})
+        assert status == 200
+        assert cfg['min_length'] == 20
+        assert cfg['max_length'] == 300
+
+    def test_rejects_max_length_over_telegram_limit(self, clean_db):
+        project = database.get_or_create_project('fmt-4', 'Fmt 4')
+        status, payload = studio_api.update_config(project['id'], {'max_length': 5000})
+        assert status == 400
+
+    def test_rejects_min_length_greater_than_max_length(self, clean_db):
+        project = database.get_or_create_project('fmt-5', 'Fmt 5')
+        status, payload = studio_api.update_config(project['id'], {'min_length': 500, 'max_length': 100})
+        assert status == 400
+
+    def test_get_config_exposes_defaults_when_unset(self, clean_db):
+        project = database.get_or_create_project('fmt-6', 'Fmt 6')
+        status, cfg = studio_api.get_config(project['id'])
+        assert status == 200
+        assert cfg['bold_title'] is True
+        assert cfg['min_length'] == 50
+        assert cfg['max_length'] == 1000
+
+
+class TestPromptSaveValidation:
+    """MUHIM: avval custom prompt saqlanganda placeholder xato bo'lsa
+    (masalan admin {chanel_tag} deb yozib qo'ysa), bu xato faqat
+    generatsiya paytida serverda jimgina log qilinib, standart promptga
+    qaytardi — admin buni Dashboard'da sezmasdi. Endi SAQLASHNING
+    O'ZIDA aniq xabar bilan rad etiladi."""
+
+    def test_valid_writer_prompt_saves(self, clean_db):
+        project = database.get_or_create_project('prompt-ok', 'Prompt OK')
+        status, cfg = studio_api.update_config(project['id'], {
+            'prompts': {'writer': 'Kanal: {channel_tag}, ohang: {tone}, soha: {domain_description}, '
+                                   '{nicknames_block} {content_types_block} {emoji_block} {jargon_block}'},
+        })
+        assert status == 200
+        assert 'writer' in cfg['prompts']
+
+    def test_typo_in_placeholder_rejected_with_clear_error(self, clean_db):
+        project = database.get_or_create_project('prompt-typo', 'Prompt Typo')
+        status, payload = studio_api.update_config(project['id'], {
+            'prompts': {'writer': 'Kanal: {chanel_tag}'},  # typo: chanel_tag
+        })
+        assert status == 400
+        assert 'writer' in payload['error']
+        assert 'chanel_tag' in payload['error']
+
+    def test_unknown_placeholder_in_researcher_prompt_rejected(self, clean_db):
+        project = database.get_or_create_project('prompt-unknown', 'Prompt Unknown')
+        status, payload = studio_api.update_config(project['id'], {
+            'prompts': {'researcher': 'Soha: {domain_description}, narsa: {biror_notogri_joy}'},
+        })
+        assert status == 400
+        assert 'researcher' in payload['error']
+
+    def test_unescaped_brace_in_editor_prompt_rejected(self, clean_db):
+        project = database.get_or_create_project('prompt-brace', 'Prompt Brace')
+        status, payload = studio_api.update_config(project['id'], {
+            'prompts': {'editor': 'Misol JSON: {"key": "value"}, kanal: {channel_tag}'},
+        })
+        assert status == 400
+
+    def test_valid_editor_prompt_with_escaped_braces_saves(self, clean_db):
+        project = database.get_or_create_project('prompt-escaped', 'Prompt Escaped')
+        status, cfg = studio_api.update_config(project['id'], {
+            'prompts': {'editor': 'Misol JSON: {{"key": "value"}}, kanal: {channel_tag}'},
+        })
+        assert status == 200
+
+    def test_prompt_not_saved_when_validation_fails(self, clean_db):
+        # Xato bo'lsa, HECH QANDAY prompt (hatto boshqa to'g'ri turdagilar
+        # ham) saqlanmasligi kerak — hammasi yoki hech narsa.
+        project = database.get_or_create_project('prompt-atomic', 'Prompt Atomic')
+        status, payload = studio_api.update_config(project['id'], {
+            'prompts': {
+                'researcher': 'Soha: {domain_description}, {jargon_rules_block}',
+                'writer': 'Xato: {notogri_joy}',
+            },
+        })
+        assert status == 400
+        _, cfg = studio_api.get_config(project['id'])
+        assert cfg.get('prompts', {}) == {}
 
 
 class TestTelegramBotTokenConfig:

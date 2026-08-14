@@ -124,6 +124,35 @@ class TestValidatePost:
         ok, reason = w.validate_post('Bu oddiy, to\'g\'ri formatdagi post matni. ' * 3)
         assert ok
 
+    def test_custom_min_length_accepts_shorter_post(self):
+        # 20 belgili post standart (50) bo'yicha rad etiladi, lekin
+        # loyiha o'z min_length=10 qiymatini sozlagan bo'lsa qabul
+        # qilinishi kerak.
+        short_post = 'Qisqa post matni.'
+        assert len(short_post) < 50
+        ok_default, _ = w.validate_post(short_post)
+        assert not ok_default
+        ok_custom, _ = w.validate_post(short_post, min_length=10)
+        assert ok_custom
+
+    def test_custom_max_length_rejects_shorter_than_default_limit(self):
+        # Standart (1000) bo'yicha o'tadigan post, lekin loyiha o'z
+        # max_length=100 qiymatini sozlagan bo'lsa rad etilishi kerak.
+        post = 'Bu oddiy, to\'g\'ri formatdagi post matni. ' * 3
+        assert len(post) < 1000
+        ok_default, _ = w.validate_post(post)
+        assert ok_default
+        ok_custom, reason = w.validate_post(post, max_length=50)
+        assert not ok_custom
+        assert '50' in reason
+
+    def test_markdown_still_rejected_regardless_of_custom_lengths(self):
+        # Markdown tekshiruvi DB'ga chiqarilmagan — har doim yoqiq,
+        # min/max_length qanday sozlanishidan qat'i nazar.
+        post = 'Bu **muhim** yangilik ' + 'x' * 50
+        ok, reason = w.validate_post(post, min_length=1, max_length=10000)
+        assert not ok
+
 
 class TestEnsureChannelTag:
     def test_adds_tag_if_missing(self):

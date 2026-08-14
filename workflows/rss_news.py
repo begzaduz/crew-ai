@@ -301,11 +301,22 @@ def gemini_call(system_prompt: str, user_prompt: str,
 
 
 # ── Rule-based validator ──────────────────────────────────
-def validate_post(post: str) -> tuple[bool, str]:
-    if len(post.strip()) < 50:
-        return False, 'Post juda qisqa (< 50 belgi)'
-    if len(post) > 1000:
-        return False, f'Post juda uzun ({len(post)} belgi, max 1000)'
+DEFAULT_MIN_LENGTH = 50
+DEFAULT_MAX_LENGTH = 1000
+
+
+def validate_post(post: str, min_length: int = DEFAULT_MIN_LENGTH,
+                   max_length: int = DEFAULT_MAX_LENGTH) -> tuple[bool, str]:
+    """min_length/max_length — loyihaning workflow config'idagi
+    'min_length'/'max_length' qiymatlaridan keladi (Dashboard -> Knowledge
+    Base -> Format qoidalari). Standart: 50/1000 belgi (orqaga moslik).
+    MUHIM: markdown tekshiruvi ATAYLAB DB'ga chiqarilmagan — bu uslub
+    tanlovi emas, AI xatosini (Gemini ba'zan markdown yozib qo'yadi)
+    ushlaydigan xavfsizlik to'ri, shuning uchun har doim yoqiq."""
+    if len(post.strip()) < min_length:
+        return False, f'Post juda qisqa (< {min_length} belgi)'
+    if len(post) > max_length:
+        return False, f'Post juda uzun ({len(post)} belgi, max {max_length})'
     markdown_patterns = [r'\*\*', r'__', r'\[.+\]\(.+\)', r'^#{1,6} ']
     for pat in markdown_patterns:
         if re.search(pat, post, re.MULTILINE):
@@ -567,6 +578,18 @@ def generate_post(article: dict, project_id: int) -> str:
     jargon = config.get('jargon') or DEFAULT_JARGON
     emoji_legend = config.get('emoji_legend') or DEFAULT_EMOJI_LEGEND
 
+    # Post uzunligi chegaralari — Dashboard'dan sozlanadi (Knowledge Base
+    # -> Format qoidalari). Noto'g'ri/bo'sh qiymat kelsa standartga
+    # qaytadi (orqaga moslik — avval bular kodga qattiq yozilgan edi).
+    try:
+        min_length = int(config.get('min_length') or DEFAULT_MIN_LENGTH)
+    except (TypeError, ValueError):
+        min_length = DEFAULT_MIN_LENGTH
+    try:
+        max_length = int(config.get('max_length') or DEFAULT_MAX_LENGTH)
+    except (TypeError, ValueError):
+        max_length = DEFAULT_MAX_LENGTH
+
     # Dashboard'dagi "Prompts" bo'limidan tahrirlangan bo'lsa, shu custom
     # promptlar ishlatiladi (har biri mustaqil — faqat bittasi tahrirlangan
     # bo'lishi ham mumkin). Bo'lmasa standart (kod ichidagi) promptga qaytadi.
@@ -591,7 +614,7 @@ def generate_post(article: dict, project_id: int) -> str:
     edited = editor_agent(raw_post, article['title'], channel_tag, editor_prompt, client=client)
 
     post = ensure_channel_tag(edited, channel_tag)
-    ok, reason = validate_post(post)
+    ok, reason = validate_post(post, min_length=min_length, max_length=max_length)
     if not ok:
         log.warning(f'[Validator] Rad: {reason} — original post qaytarildi')
         post = ensure_channel_tag(raw_post, channel_tag)

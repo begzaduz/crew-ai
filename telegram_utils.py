@@ -66,14 +66,23 @@ def notify_admins(text: str) -> None:
         tg_send(admin_id, text)
 
 
-def _clean_post(post: str) -> str:
+def _clean_post(post: str, bold_title: bool = True) -> str:
     """
     Avval Telegram tushunmaydigan teglarni tozalaydi (masalan <br> -> \\n),
-    keyin sarlavha qatorini <b>...</b> bilan o'raydi (agar allaqachon
-    o'ralmagan bo'lsa). Boshlang'ich emoji bo'lsa, uni bold tashqarisida
-    qoldiradi: masalan "🚨 Sarlavha matni" -> "🚨 <b>Sarlavha matni</b>"
+    keyin (agar bold_title=True bo'lsa) sarlavha qatorini <b>...</b> bilan
+    o'raydi (agar allaqachon o'ralmagan bo'lsa). Boshlang'ich emoji bo'lsa,
+    uni bold tashqarisida qoldiradi: masalan "🚨 Sarlavha matni" ->
+    "🚨 <b>Sarlavha matni</b>"
+
+    bold_title — loyihaning workflow config'idagi 'bold_title' qiymatidan
+    keladi (Dashboard -> Knowledge Base -> Format qoidalari). Standart:
+    True (orqaga moslik — avval doim qalin edi). MUHIM: bu ilgari kodga
+    qattiq yozilgan edi (har doim qalin) — endi har loyiha o'zi
+    tanlaydi.
     """
     post = sanitize_telegram_html(post)
+    if not bold_title:
+        return post
     lines = post.split('\n')
     cleaned = []
     for i, line in enumerate(lines):
@@ -93,7 +102,7 @@ def _clean_post(post: str) -> str:
 
 
 def tg_channel(text: str, image_url: str | None = None, chat_id: str | int | None = None,
-                bot_token: str | None = None) -> dict:
+                bot_token: str | None = None, bold_title: bool = True) -> dict:
     """
     Kanalga yuborish (FAQAT Dashboard'da 'Tasdiqlash' bosilganda chaqiriladi):
     - image_url bo'lsa: sendPhoto (rasm + caption HTML)
@@ -112,8 +121,11 @@ def tg_channel(text: str, image_url: str | None = None, chat_id: str | int | Non
     javob (tg_send) har doim global TOKEN bilan ishlaydi, chunki admin
     buyruqlar (masalan /yangilik) doim "Ingliz Futboli" loyiha botiga
     keladi.
+
+    bold_title — loyihaning workflow config'idagi 'bold_title' qiymati
+    (studio_api._publish_asset_now() orqali uzatiladi).
     """
-    text = _clean_post(text)
+    text = _clean_post(text, bold_title=bold_title)
     target = chat_id or CHANNEL
     token = bot_token or TOKEN
 
@@ -132,7 +144,7 @@ def tg_channel(text: str, image_url: str | None = None, chat_id: str | int | Non
         result = res.json()
         if not result.get('ok'):
             log.warning(f'[TG] sendPhoto xato: {result.get("description")} — matn sifatida yuborilmoqda')
-            return tg_channel(text, image_url=None, chat_id=chat_id, bot_token=bot_token)
+            return tg_channel(text, image_url=None, chat_id=chat_id, bot_token=bot_token, bold_title=bold_title)
         return result
     else:
         res = requests.post(

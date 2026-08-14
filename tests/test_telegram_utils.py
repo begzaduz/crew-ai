@@ -3,7 +3,7 @@ regressiyasi: Gemini ba'zan '<br>' o'rniga orasida bo'shliq bilan
 '< br >' kabi variant chiqarib qo'yishi kuzatildi (Dashboard'da xom
 teg ko'rinib qolgan edi), shuning uchun bo'shliqli variantlar ham
 qamrab olinishi SHART."""
-from telegram_utils import sanitize_telegram_html
+from telegram_utils import sanitize_telegram_html, _clean_post
 
 
 class TestSanitizeBrTag:
@@ -86,3 +86,34 @@ class TestTgChannelBotTokenRouting:
         monkeypatch.setattr(telegram_utils.requests, 'post', fake_post)
         telegram_utils.tg_channel('Test post text here', chat_id='@SomeChannel')
         assert f'/bot{telegram_utils.TOKEN}/' in captured['url']
+
+
+class TestCleanPostBoldTitle:
+    """MUHIM: sarlavhani qalin qilish ilgari kodga qattiq yozilgan edi
+    (har doim yoqiq) — endi bold_title parametri orqali (loyihaning
+    workflow config'idagi 'bold_title' qiymatidan) DB-driven boshqariladi."""
+
+    def test_bold_title_true_wraps_first_line(self):
+        result = _clean_post('Sarlavha matni\n\nIkkinchi paragraf.', bold_title=True)
+        assert result.startswith('<b>Sarlavha matni</b>')
+
+    def test_bold_title_false_leaves_first_line_plain(self):
+        result = _clean_post('Sarlavha matni\n\nIkkinchi paragraf.', bold_title=False)
+        assert result.startswith('Sarlavha matni')
+        assert '<b>' not in result
+
+    def test_bold_title_default_is_true(self):
+        # Parametr berilmasa — orqaga moslik (avvalgi xatti-harakat).
+        result = _clean_post('Sarlavha matni\n\nMatn.')
+        assert result.startswith('<b>Sarlavha matni</b>')
+
+    def test_bold_title_false_still_sanitizes_html(self):
+        # bold_title=False bo'lsa ham, ruxsat etilmagan teglar (masalan <br>)
+        # baribir tozalanishi kerak — faqat bold-wrap o'chadi.
+        result = _clean_post('Sarlavha< br >davomi', bold_title=False)
+        assert '<br' not in result
+        assert result == 'Sarlavha\ndavomi'
+
+    def test_bold_title_preserves_leading_emoji_outside_bold(self):
+        result = _clean_post('🚨 Muhim xabar\n\nMatn.', bold_title=True)
+        assert result.startswith('🚨 <b>Muhim xabar</b>')

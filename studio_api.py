@@ -121,6 +121,12 @@ def get_config(project_id: int) -> tuple[int, object]:
         raw_bot_token = cfg.pop('telegram_bot_token', None)
         cfg['telegram_bot_token_set'] = bool(raw_bot_token)
         cfg['telegram_bot_token_hint'] = raw_bot_token[-4:] if raw_bot_token else ''
+        # Format qoidalari — hali sozlanmagan bo'lsa ham Dashboard'da
+        # to'g'ri (kod ichidagi) standart qiymat ko'rinishi uchun.
+        from workflows.rss_news import DEFAULT_MIN_LENGTH, DEFAULT_MAX_LENGTH
+        cfg.setdefault('bold_title', True)
+        cfg.setdefault('min_length', DEFAULT_MIN_LENGTH)
+        cfg.setdefault('max_length', DEFAULT_MAX_LENGTH)
         return 200, cfg
     except Exception as e:
         log.error(f'[StudioAPI] get_config: {e}')
@@ -132,8 +138,46 @@ _ALLOWED_CONFIG_KEYS = {
     'domain_description', 'content_types', 'jargon', 'emoji_legend',
     'telegram_channel_id', 'telegram_admin_chat_id', 'telegram_bot_token',
     'prompts', 'gemini_api_key', 'publish_interval_minutes',
+    'bold_title', 'min_length', 'max_length',
 }
 _ALLOWED_PROMPT_KEYS = {'researcher', 'writer', 'editor'}
+
+# Har bir agent generatsiya paytida promptni AYNAN shu kalitlar bilan
+# .format() qiladi (workflows/rss_news.py'dagi researcher_agent()/
+# writer_agent()/editor_agent()ga qarang). Admin Dashboard'da custom
+# prompt saqlaganda, SHU YERDA (saqlashdan oldin) sinab ko'ramiz — agar
+# .format() xato bersa (masalan admin {chanel_tag} deb yozib qo'ygan
+# bo'lsa, yoki mavjud bo'lmagan {biror_narsa} ishlatgan bo'lsa), avval bu
+# xato faqat serverda log qilinib, keyin JIMGINA standart promptga
+# qaytarilardi — admin buni sezmasdan qolardi. Endi saqlashning o'zida
+# aniq xabar bilan rad etiladi.
+_PROMPT_SAMPLE_KWARGS = {
+    'researcher': {'domain_description': 'x', 'jargon_rules_block': 'x'},
+    'writer': {
+        'channel_tag': 'x', 'tone': 'x', 'domain_description': 'x',
+        'nicknames_block': 'x', 'content_types_block': 'x',
+        'emoji_block': 'x', 'jargon_block': 'x',
+    },
+    'editor': {'channel_tag': 'x'},
+}
+
+
+def _validate_prompt_template(kind: str, text: str) -> str | None:
+    """Berilgan custom prompt matnini shu agent generatsiya paytida
+    ishlatadigan aynan shu placeholder to'plami bilan sinab ko'radi.
+    Muvaffaqiyatli bo'lsa None, aks holda aniq (qaysi placeholder xato
+    ekanini ko'rsatuvchi) xato matnini qaytaradi."""
+    try:
+        text.format(**_PROMPT_SAMPLE_KWARGS[kind])
+        return None
+    except (KeyError, IndexError) as e:
+        return (
+            f"{kind} prompt noto'g'ri formatlangan — "
+            f"mavjud bo'lmagan yoki xato yozilgan joy: {{{e.args[0] if e.args else '?'}}}. "
+            f"Ruxsat etilgan joylar: {', '.join('{' + k + '}' for k in _PROMPT_SAMPLE_KWARGS[kind])}"
+        )
+    except ValueError as e:
+        return f"{kind} prompt noto'g'ri formatlangan — {{ }} qavslardan biri noto'g'ri ishlatilgan ({e})"
 
 
 def update_config(project_id: int, data: dict) -> tuple[int, object]:
@@ -192,6 +236,35 @@ def update_config(project_id: int, data: dict) -> tuple[int, object]:
         # Bo'sh qiymat chiqarib tashlanadi — shu orqali admin bitta
         # promptni "tozalab" standartga qaytarishi mumkin.
         patch['prompts'] = {k: v for k, v in patch['prompts'].items() if isinstance(v, str) and v.strip()}
+        # MUHIM: har bir custom promptni SAQLASHDAN OLDIN sinab ko'ramiz —
+        # generatsiya paytidagi jimgina-fallback muammosining oldini olish
+        # uchun (yuqoridagi _validate_prompt_template izohiga qarang).
+        for kind, text in patch['prompts'].items():
+            err = _validate_prompt_template(kind, text)
+            if err:
+                return 400, {'error': err}
+    if 'bold_title' in patch and not isinstance(patch['bold_title'], bool):
+        return 400, {'error': "bold_title true/false bo'lishi kerak"}
+    if 'min_length' in patch:
+        try:
+            min_length = int(patch['min_length'])
+        except (TypeError, ValueError):
+            return 400, {'error': "min_length butun son bo'lishi kerak"}
+        if min_length < 1:
+            return 400, {'error': "min_length kamida 1 bo'lishi kerak"}
+        patch['min_length'] = min_length
+    if 'max_length' in patch:
+        try:
+            max_length = int(patch['max_length'])
+        except (TypeError, ValueError):
+            return 400, {'error': "max_length butun son bo'lishi kerak"}
+        # Telegram sendMessage matn chegarasi 4096 belgi — undan
+        # oshirilsa Telegram API postni butunlay rad etadi.
+        if max_length < 10 or max_length > 4096:
+            return 400, {'error': "max_length 10 dan 4096 gacha bo'lishi kerak (Telegram xabar chegarasi)"}
+        patch['max_length'] = max_length
+    if 'min_length' in patch and 'max_length' in patch and patch['min_length'] > patch['max_length']:
+        return 400, {'error': "min_length max_length'dan katta bo'lishi mumkin emas"}
     if not patch:
         return 200, database.get_workflow_config(project_id) or {}
     try:
@@ -340,10 +413,15 @@ def _publish_asset_now(asset: dict, reviewer: str = 'dashboard', notes: str = ''
     # bot qattiq bog'lanmagan). Bo'lmasa, tg_channel() o'zi global TOKEN
     # (.env — "Ingliz Futboli" loyiha boti)ga fallback qiladi.
     bot_token = owner_config.get('telegram_bot_token') or None
+    # Sarlavhani qalin (bold) qilish — Dashboard'dan sozlanadi (Knowledge
+    # Base -> Format qoidalari). Standart: True (orqaga moslik).
+    bold_title = owner_config.get('bold_title')
+    if bold_title is None:
+        bold_title = True
 
     result = telegram_utils.tg_channel(
         asset['content'], image_url=asset.get('image_url'), chat_id=target_channel,
-        bot_token=bot_token,
+        bot_token=bot_token, bold_title=bold_title,
     )
     if not result.get('ok'):
         log.error(f'[StudioAPI] _publish_asset_now: TG xato: {result.get("description")}')
