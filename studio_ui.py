@@ -1050,6 +1050,7 @@ STUDIO_HTML = """<!DOCTYPE html>
       <textarea id="qd-content" class="qd-textarea">${escapeHtml(a.content || '')}</textarea>
       <div class="qd-actions">
         <button class="btn btn-green" onclick="approveAsset(${a.id})">Tasdiqlash</button>
+        <button class="btn btn-ghost" onclick="saveAssetManual(${a.id})">Saqlash</button>
         <button class="btn btn-danger" onclick="rejectAsset(${a.id})">Rad</button>
       </div>
     `;
@@ -1117,6 +1118,15 @@ STUDIO_HTML = """<!DOCTYPE html>
     }
   }
 
+  async function saveAssetManual(id) {
+    const saved = await saveAsset(id);
+    if (saved) {
+      toast('Saqlandi');
+      const a = assetCache[id];
+      if (a) a.content = document.getElementById('qd-content').value;
+    }
+  }
+
   async function approveAsset(id) {
     const ok = await showConfirmModal({
       title: 'Postni tasdiqlash',
@@ -1153,6 +1163,12 @@ STUDIO_HTML = """<!DOCTYPE html>
     });
     if (!ok) return;
     try {
+      // MUHIM: rad etishdan oldin ham tahrirlangan matn saqlanadi
+      // (approveAsset() bilan bir xil naqsh) — aks holda admin postni
+      // tahrirlab, keyin "Rad" bossa, tahrir hech qayerga saqlanmay
+      // yo'qolib ketardi.
+      const saved = await saveAsset(id);
+      if (!saved) return;
       const res = await apiPost('/api/studio/assets/reject', { id });
       const data = await res.json();
       if (!res.ok) {

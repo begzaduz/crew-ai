@@ -22,7 +22,7 @@ GEMINI_MODEL = 'gemini-3.6-flash'
 
 # ── Grok (xAI) — Gemini kunlik RPD kvotasi tugaganda ZAXIRA (fallback) ──
 # Ixtiyoriy: bo'sh bo'lsa, fallback ishlamaydi (avvalgi xatti-harakat —
-# 429 kelsa darhol xato ko'tariladi). GROK_KEY sozlansa, groq_call()
+# 429 kelsa darhol xato ko'tariladi). GROK_KEY sozlansa, gemini_call()
 # Gemini 429/RESOURCE_EXHAUSTED xatosida avtomatik Grok'ga o'tadi.
 GROK_KEY   = os.getenv('GROK_KEY', '')
 GROK_MODEL = 'grok-4.1-fast'

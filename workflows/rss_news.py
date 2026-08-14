@@ -199,7 +199,7 @@ GROK_API_URL = 'https://api.x.ai/v1/chat/completions'
 
 
 def grok_call(system_prompt: str, user_prompt: str, max_tokens: int = 700) -> str:
-    """Grok orqali chaqiruv — FAQAT groq_call() ichida, Gemini RPD
+    """Grok orqali chaqiruv — FAQAT gemini_call() ichida, Gemini RPD
     kvotasi tugaganda (429) va GROK_KEY sozlangan bo'lsa, avtomatik
     zaxira sifatida chaqiriladi. Alohida, to'g'ridan-to'g'ri
     chaqirilishi ham mumkin, lekin hozircha pipeline shunga muhtoj
@@ -228,7 +228,7 @@ def grok_call(system_prompt: str, user_prompt: str, max_tokens: int = 700) -> st
 
 
 # ── Gemini API — kvota tejash uchun retry o'chirilgan ─────
-def groq_call(system_prompt: str, user_prompt: str,
+def gemini_call(system_prompt: str, user_prompt: str,
               temperature: float = 0.4, max_tokens: int = 700,
               client: genai.Client | None = None) -> str:
     """
@@ -368,7 +368,7 @@ def researcher_agent(article: dict, domain_description: str, jargon: dict,
             domain_description=domain_description,
             jargon_rules_block=_jargon_block(jargon),
         )
-    result = groq_call(
+    result = gemini_call(
         prompt,
         f"Analyze this {domain_description} news:\n\nHEADLINE: {article['title']}\nCONTENT: {content[:2200]}",
         temperature=0.2, max_tokens=450,
@@ -487,7 +487,7 @@ def writer_agent(article: dict, facts: str, nicknames: dict, channel_tag: str, t
     except (KeyError, IndexError) as e:
         log.warning(f'[Writer] Custom prompt formatlashda xato ({e}) — standart promptga qaytildi')
         prompt = WRITER_PROMPT_TEMPLATE.format(**fmt_kwargs)
-    result = groq_call(
+    result = gemini_call(
         prompt,
         f"Yangilik yoz:\n\nSARLAVHA: {article['title']}\nFAKTLAR:\n{facts}\n\nFaqat postni yoz:",
         temperature=0.5, max_tokens=700,
@@ -523,7 +523,7 @@ def editor_agent(post: str, title: str, channel_tag: str,
     except (KeyError, IndexError) as e:
         log.warning(f'[Editor] Custom prompt formatlashda xato ({e}) — standart promptga qaytildi')
         prompt = EDITOR_PROMPT_TEMPLATE.format(channel_tag=channel_tag)
-    result = groq_call(
+    result = gemini_call(
         prompt,
         f"Review this Uzbek post about: {title}\n\nPOST:\n{post}",
         temperature=0.2, max_tokens=800,
