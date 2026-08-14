@@ -9,13 +9,13 @@ from socketserver import ThreadingMixIn
 from urllib.parse import urlparse, parse_qs
 
 from config import (
-    ADMIN_IDS, PORT, INTERVAL, WEBHOOK_SECRET, DAILY_POST_BUDGET,
-    DASHBOARD_USER, DASHBOARD_PASSWORD, BOT_ENABLED, MINI_APP_ENABLED,
+    ADMIN_IDS, PORT, INTERVAL, DAILY_POST_BUDGET,
+    DASHBOARD_USER, DASHBOARD_PASSWORD,
 )
 import database
 from database import (
     is_processed, mark_processed, clear_cache, get_stats, init_db,
-    get_recent_posts, get_today_api_calls, increment_api_calls,
+    get_today_api_calls, increment_api_calls,
 )
 from feeds import fetch_news, fetch_article_image, DEFAULT_RSS_FEEDS
 from workflows.rss_news import (
@@ -23,10 +23,8 @@ from workflows.rss_news import (
     DEFAULT_CHANNEL_TAG, DEFAULT_TONE, DEFAULT_DOMAIN_DESCRIPTION,
     DEFAULT_CONTENT_TYPES, DEFAULT_JARGON, DEFAULT_EMOJI_LEGEND,
 )
-from api_football import fetch_standings, fetch_matches_by_date
-from webapp import HTML_PAGE
 from studio_ui import STUDIO_HTML
-from telegram_utils import tg_send, notify_admins
+from telegram_utils import notify_admins
 import studio_api
 
 log = logging.getLogger(__name__)
@@ -126,13 +124,6 @@ def _resolve_project_id(source: dict) -> int:
     return PROJECT_ID
 
 
-# ── Admin tekshiruvi ──────────────────────────────────────
-def is_admin(chat_id: int) -> bool:
-    if not ADMIN_IDS:
-        return True
-    return chat_id in ADMIN_IDS
-
-
 # ── Kunlik API byudjetini tekshirish ──────────────────────
 def _quota_available(project_id: int) -> tuple[bool, int, int]:
     """(mavjudmi, ishlatilgan, limit) qaytaradi — HAR LOYIHA UCHUN ALOHIDA
@@ -226,145 +217,7 @@ def auto_news_post(project_id: int) -> bool:
         _news_lock.release()
 
 
-# ── Update handler ────────────────────────────────────────
-def handle_update(update: dict) -> None:
-    # Ingliz Futboli boti kodda shartsiz o'chirilgan (config.BOT_ENABLED =
-    # False, env'ga bog'liq emas). Webhook so'rovi baribir 200 bilan
-    # qabul qilinadi (main.py'dagi do_POST), lekin hech qanday buyruqqa
-    # javob berilmaydi/hech narsa yaratilmaydi — Dashboard va boshqa
-    # loyihalarga ta'sir qilmaydi.
-    if not BOT_ENABLED:
-        return
-
-    msg = update.get('message')
-    if not msg:
-        return
-
-    chat = msg.get('chat') or {}
-    chat_id = chat.get('id')
-    if chat_id is None:
-        return
-
-    text: str = (msg.get('text') or '').strip()
-
-    # MUHIM: bot buyruqlari endi BITTA global loyihaga (PROJECT_ID)
-    # qattiq bog'lanmagan — qaysi loyiha bilan ishlash kerakligi shu
-    # chat_id'ning Dashboard'da (workflows.config -> telegram_admin_
-    # chat_id) qaysi loyihaga bog'langaniga qarab DB'dan aniqlanadi.
-    # Hech qanday loyiha bu chatga bog'lanmagan bo'lsa (masalan hali
-    # sozlanmagan, yoki eski/yagona-loyiha o'rnatish), orqaga moslik
-    # uchun bootstrap qilingan asosiy loyihaga (PROJECT_ID) qaytiladi —
-    # bu "Ingliz Futboli" hech narsa qo'shimcha sozlamasdan ishlashda
-    # davom etishini kafolatlaydi.
-    project_id = database.get_project_id_by_telegram_admin_chat_id(chat_id) or PROJECT_ID
-
-    try:
-        if text == '/whoami':
-            tg_send(chat_id, f'Sizning chat_id: {chat_id}')
-            return
-
-        if text.startswith('/') and not is_admin(chat_id):
-            tg_send(chat_id, f'⛔ Siz admin emassiz. (chat_id: {chat_id})')
-            return
-
-        if text == '/start':
-            tg_send(chat_id,
-                'Studio Lab Bot v5.0\n\n'
-                '3 agent: Researcher + Writer + Editor\n'
-                '(terminologiya, taxalluslar va manbalar Dashboard orqali boshqariladi)\n\n'
-                'MUHIM: Bot endi kanalga hech narsani to\'g\'ridan-to\'g\'ri '
-                'yubormaydi. Har qanday matn yoki /yangilik natijasi avval '
-                'Review Queue\'ga (Dashboard) qo\'shiladi — tasdiqlash va '
-                'kanalga yuborish FAQAT Dashboard\'da bo\'ladi.\n\n'
-                'Matn yuboring — tarjima/formatlab Review Queue-ga qo\'shadi\n'
-                '/yangilik — RSS dan yangi xabar olib Review Queue-ga qo\'shadi\n'
-                '/stat — Statistika\n'
-                '/clearcache — Keshni tozalash\n'
-                '/help — Yordam'
-            )
-
-        elif text == '/help':
-            tg_send(chat_id,
-                'Qo\'llanma:\n\n'
-                '• Har qanday matn yuboring → AI tarjima/formatlab Review Queue-ga qo\'shadi\n'
-                '• /yangilik → RSS lentadan eng dolzarb yangilikni Review Queue-ga qo\'shadi\n'
-                '• /stat → Nechta yangilik qayta ishlangani\n'
-                '• /clearcache → Keshni tozalab /yangilik yuboring\n'
-                '• Tasdiqlash va kanalga yuborish → Dashboard (/studio)\n\n'
-                f'Admin IDlar: {ADMIN_IDS}'
-            )
-
-        elif text == '/yangilik':
-            if not is_admin(chat_id):
-                tg_send(chat_id, '⛔ Faqat adminlar uchun.')
-                return
-            ok_quota, used, limit = _quota_available(project_id)
-            if not ok_quota:
-                tg_send(chat_id, f'⛔ Bugungi API byudjeti tugadi ({used}/{limit}). Ertaga (Pacific vaqti bo\'yicha) tiklanadi.')
-                return
-            tg_send(chat_id, '⏳ Yangilik olinayapti (3 agent ishlaydi)...')
-            ok = auto_news_post(project_id)
-            tg_send(chat_id, '✅ Review Queue-ga qo\'shildi! Tasdiqlash uchun Dashboard: /studio' if ok
-                    else '❌ Yangi yangilik topilmadi (yoki kvota tugagan).')
-
-        elif text == '/stat':
-            cnt, avg = get_stats()
-            used, limit = get_today_api_calls(project_id), DAILY_API_LIMIT
-            tg_send(chat_id, f'📊 Bazada: {cnt} ta yangilik\nO\'rtacha ball: {avg}\n\n🔋 Bugungi API: {used}/{limit}')
-
-        elif text == '/clearcache':
-            if not is_admin(chat_id):
-                tg_send(chat_id, '⛔ Faqat adminlar uchun.')
-                return
-            clear_cache()
-            tg_send(chat_id, '✅ Kesh tozalandi! /yangilik yuboring.')
-
-        elif text and not text.startswith('/'):
-            if not is_admin(chat_id):
-                return
-            ok_quota, used, limit = _quota_available(project_id)
-            if not ok_quota:
-                tg_send(chat_id, f'⛔ Bugungi API byudjeti tugadi ({used}/{limit}). Ertaga (Pacific vaqti bo\'yicha) tiklanadi.')
-                return
-            tg_send(chat_id, '⏳ 3 agent ishlayapti (tarjima + formatlash)...')
-            # MUHIM: increment_api_calls() FAQAT BITTA marta chaqiriladi —
-            # generate_post() muvaffaqiyatli tugagach. Avval bu bitta try/except
-            # ichida edi va agar generate_post() muvaffaqiyatli tugab, keyin
-            # create_asset() (masalan DB xatosi) muvaffaqiyatsiz bo'lsa, kvota
-            # IKKI marta oshirilardi (bitta haqiqiy Gemini chaqiruvi uchun).
-            try:
-                # Matn boshqa tilda bo'lishi ham mumkin — pipeline avtomatik
-                # o'zbek tiliga tarjima qilib, kanalga mos formatga soladi.
-                article = {'title': text, 'description': '', 'url': None, 'score': 100}
-                post = generate_post(article, project_id)
-            except Exception as e:
-                increment_api_calls(project_id, CALLS_PER_POST)
-                log.error(f'[Bot] Post yaratish xatosi (generate_post): {e}')
-                tg_send(chat_id, f'❌ Xatolik: {e}')
-                return
-
-            increment_api_calls(project_id, CALLS_PER_POST)
-
-            try:
-                # MUHIM: bu yerda kanalga to'g'ridan-to'g'ri yubormaymiz —
-                # Review Queue'ga qo'shamiz, faqat Dashboard'da tasdiqlangandan
-                # keyin kanalga ketadi.
-                asset = database.create_asset(
-                    project_id=project_id, source_url=None, asset_type='manual',
-                    title=text[:80], content=post, score=100, image_url=None,
-                )
-            except Exception as e:
-                log.error(f'[Bot] Post yaratish xatosi (create_asset): {e}')
-                tg_send(chat_id, f'❌ Xatolik: {e}')
-                return
-
-            tg_send(chat_id, f'✅ Review Queue-ga qo\'shildi. Tasdiqlash uchun Dashboard: /studio\n\n{post}')
-
-    except Exception as e:
-        log.error(f'[Bot] handle_update kutilmagan xato: {e}')
-
-
-# ── Webhook + Mini App + Studio Dashboard HTTP handler ────
+# ── Webhook + Studio Dashboard HTTP handler ────────────────
 class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
     """Har bir so'rovni alohida thread'da qayta ishlaydi — Mini App, Studio
     Dashboard va Telegram webhook so'rovlari bir-birini bloklamasligi uchun."""
@@ -458,32 +311,10 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self._json(payload, status=status)
             return
 
-        # ── Telegram webhook ──────────────────────────────────────────
-        incoming_secret = self.headers.get('X-Telegram-Bot-Api-Secret-Token', '')
-        if not hmac.compare_digest(incoming_secret, WEBHOOK_SECRET):
-            log.warning('[Webhook] Noto\'g\'ri yoki yo\'q secret token — so\'rov rad etildi.')
-            self.send_response(401)
-            self.end_headers()
-            self.wfile.write(b'Unauthorized')
-            return
-
-        body = self._read_body_or_413()
-        if body is None:
-            return
-        self.send_response(200)
+        # Boshqa hech qanday POST endpoint yo'q (Telegram bot webhook'i
+        # bot butunlay olib tashlangani uchun endi kodda yo'q).
+        self.send_response(404)
         self.end_headers()
-        self.wfile.write(b'OK')
-        # Bot shartsiz o'chirilgan bo'lsa (config.BOT_ENABLED = False),
-        # thread'ni umuman yaratmaymiz — handle_update() baribir darhol
-        # qaytadi, lekin bu yerda oldindan to'xtatish resurs isrofini
-        # ham oldini oladi.
-        if not BOT_ENABLED:
-            return
-        try:
-            update = json.loads(body)
-            threading.Thread(target=handle_update, args=(update,), daemon=True).start()
-        except Exception as e:
-            log.error(f'[Webhook] {e}')
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -543,65 +374,9 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.wfile.write(STUDIO_HTML.encode('utf-8'))
             return
 
-        if path == '/api/posts':
-            if not MINI_APP_ENABLED:
-                self._json({'error': 'Mini App vaqtincha ishlamayapti'}, status=503, cors=True)
-                return
-            qs = parse_qs(parsed.query)
-            pid = _resolve_project_id({k: v[0] for k, v in qs.items()})
-            try:
-                posts = get_recent_posts(pid, 50)
-                self._json(posts, cors=True)
-            except Exception as e:
-                log.error(f'[API] /api/posts xato: {e}')
-                self._json([], status=500, cors=True)
-            return
-
-        if path == '/api/standings':
-            if not MINI_APP_ENABLED:
-                self._json({'error': 'Mini App vaqtincha ishlamayapti'}, status=503, cors=True)
-                return
-            try:
-                rows = fetch_standings()
-                self._json(rows, cors=True)
-            except Exception as e:
-                log.error(f'[API] /api/standings xato: {e}')
-                self._json(None, status=500, cors=True)
-            return
-
-        if path == '/api/matches':
-            if not MINI_APP_ENABLED:
-                self._json({'error': 'Mini App vaqtincha ishlamayapti'}, status=503, cors=True)
-                return
-            qs = parse_qs(parsed.query)
-            date_str = (qs.get('date') or [''])[0]
-            if not date_str:
-                self._json({'error': 'date kerak (YYYY-MM-DD)'}, status=400, cors=True)
-                return
-            try:
-                matches = fetch_matches_by_date(date_str)
-                self._json(matches, cors=True)
-            except Exception as e:
-                log.error(f'[API] /api/matches xato: {e}')
-                self._json(None, status=500, cors=True)
-            return
-
-        if path in ('/', '/webapp', '/webapp/'):
-            if not MINI_APP_ENABLED:
-                self.send_response(200)
-                self.send_header('Content-Type', 'text/plain; charset=utf-8')
-                self.end_headers()
-                self.wfile.write('Mini App vaqtincha ishlamayapti. Tez orada qaytadi.'.encode('utf-8'))
-                return
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/html; charset=utf-8')
-            self.end_headers()
-            self.wfile.write(HTML_PAGE.encode('utf-8'))
-            return
-
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b'Ingliz Futboli Bot v5.0')
+        self.wfile.write(b'Studio Lab')
 
     def log_message(self, *args):
         pass

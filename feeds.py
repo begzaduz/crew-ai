@@ -196,29 +196,6 @@ def fetch_article_image(url: str) -> str | None:
     return None
 
 
-def fetch_og_image(url: str) -> str | None:
-    """ESKI funksiya — faqat og:image (muqova) qaytaradi, matn ichidagi
-    rasmlarga qaramaydi. Orqaga moslik uchun saqlangan; yangi kod
-    fetch_article_image() ni ishlatishi kerak."""
-    if not url:
-        return None
-    try:
-        res = requests.get(url, timeout=8, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-            'Accept': 'text/html',
-        })
-        res.raise_for_status()
-        img_url = _parse_og_image(res.text)
-        if img_url:
-            if _is_blacklisted_image(img_url):
-                log.info(f'[Image] Blacklist: {img_url[:60]}')
-                return None
-            return img_url
-    except Exception as e:
-        log.warning(f'[Image] {url}: {e}')
-    return None
-
-
 def fetch_news(rss_feeds: list[str]) -> list[dict]:
     """RSS manbalar ro'yxatidan yangiliklarni oladi.
 

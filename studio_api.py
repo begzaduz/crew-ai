@@ -356,10 +356,12 @@ def _publish_asset_now(asset: dict, reviewer: str = 'dashboard', notes: str = ''
 
     database.mark_asset_published(asset_id)
     database.add_review(asset_id, reviewer=reviewer, decision='approved', notes=notes)
-    # Mini App (/webapp) endi FAQAT tasdiqlangan postlarni ko'rsatadi —
-    # shuning uchun published_posts jadvaliga ham yozamiz. MUHIM: postning
-    # O'Z LOYIHASI (asset['project_id']) bilan bog'lab saqlanadi — aks
-    # holda boshqa loyihaning Mini App'ida bu post ham ko'rinib qolardi.
+    # published_posts jadvaliga yozamiz — bu scheduler
+    # (get_last_published_at) uchun "oxirgi nashr qachon bo'lgan" degan
+    # yagona haqiqat manbai (publish_interval_minutes shu asosda
+    # hisoblanadi). MUHIM: postning O'Z LOYIHASI (asset['project_id'])
+    # bilan bog'lab saqlanadi — loyihalar bir-birining hisobini
+    # aralashtirib yubormasligi uchun.
     database.save_post(asset['project_id'], asset.get('source_url'), asset['title'], asset['content'], asset.get('image_url'))
     log.info(f'[StudioAPI] Asset #{asset_id} kanalga yuborildi.')
     return 200, {'ok': True}

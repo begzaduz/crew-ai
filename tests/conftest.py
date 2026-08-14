@@ -1,7 +1,7 @@
 """Pytest umumiy sozlamalari.
 
 Barcha modullar (config.py orqali) TOKEN/GEMINI_KEY/ADMIN_IDS/
-WEBHOOK_SECRET/DASHBOARD_PASSWORD env o'zgaruvchilarini talab qiladi.
+DASHBOARD_PASSWORD env o'zgaruvchilarini talab qiladi.
 Testlarda haqiqiy qiymatlar kerak emas — shuning uchun bu fayl
 har qanday test modul import qilinishidan OLDIN soxta qiymatlarni
 o'rnatadi.
@@ -29,7 +29,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault('TOKEN', 'test-token')
 os.environ.setdefault('GEMINI_KEY', 'test-gemini-key')
 os.environ.setdefault('ADMIN_IDS', '123456')
-os.environ.setdefault('WEBHOOK_SECRET', 'test-webhook-secret')
 os.environ.setdefault('DASHBOARD_PASSWORD', 'test-dashboard-password')
 os.environ.setdefault('CHANNEL', '@TestChannel')
 os.environ.setdefault(

@@ -15,7 +15,6 @@ logging.basicConfig(
 TOKEN          = os.getenv('TOKEN', '')
 CHANNEL        = os.getenv('CHANNEL', '@Inglizfutbol')
 ADMIN_IDS      = [int(x) for x in os.getenv('ADMIN_IDS', '').split(',') if x.strip()]
-WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET', '')
 
 # ── Gemini ──────────────────────────────────────────────
 GEMINI_KEY   = os.getenv('GEMINI_KEY', '')
@@ -27,9 +26,6 @@ GEMINI_MODEL = 'gemini-3.6-flash'
 # Gemini 429/RESOURCE_EXHAUSTED xatosida avtomatik Grok'ga o'tadi.
 GROK_KEY   = os.getenv('GROK_KEY', '')
 GROK_MODEL = 'grok-4.1-fast'
-
-# ── Football-data.org ─────────────────────────────────────
-FOOTBALL_DATA_KEY = os.getenv('FOOTBALL_DATA_KEY', '')
 
 # ── Serverning o'z ochiq (public) manzili ──────────────────
 # Dashboard'dan yuklangan rasmlar o'z DB'imizda saqlanadi va shu manzil
@@ -43,16 +39,6 @@ PUBLIC_BASE_URL = os.getenv('PUBLIC_BASE_URL', '').rstrip('/')
 # /studio va /api/studio/* shu login+parol bilan himoyalanadi.
 DASHBOARD_USER     = os.getenv('DASHBOARD_USER', 'admin')
 DASHBOARD_PASSWORD = os.getenv('DASHBOARD_PASSWORD', '')
-
-# ── Ingliz Futboli: bot va Mini App vaqtincha o'chirilishi ────────
-# Loyihaga hali rasman start berilmagan — Dashboard (control plane)
-# ishlashda davom etadi, lekin Telegram bot (handle_update) va Mini App
-# (webapp.py + /api/posts, /api/matches, /api/standings) KODDA
-# SHARTSIZ o'chirilgan (env orqali emas — shunday qilingan edi, lekin
-# yetarli bo'lmadi). Qayta yoqish uchun quyidagi ikkala konstantani
-# True'ga qaytaring (yoki shu commitni git revert qiling).
-BOT_ENABLED      = False
-MINI_APP_ENABLED = False
 
 # ── Server ────────────────────────────────────────────────
 PORT = int(os.getenv('PORT', 8080))
@@ -72,7 +58,5 @@ if not GEMINI_KEY:
     raise RuntimeError('GEMINI_KEY .env da topilmadi!')
 if not ADMIN_IDS:
     raise RuntimeError('ADMIN_IDS .env da topilmadi! (Telegram ID raqamlar, vergul bilan)')
-if not WEBHOOK_SECRET:
-    raise RuntimeError('WEBHOOK_SECRET .env da topilmadi! (o\'zingiz tasodifiy uzun matn o\'ylab toping)')
 if not DASHBOARD_PASSWORD:
     raise RuntimeError('DASHBOARD_PASSWORD .env da topilmadi! (Studio Lab Dashboard himoyasi uchun kerak)')
