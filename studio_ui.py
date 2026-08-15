@@ -159,11 +159,9 @@ STUDIO_HTML = """<!DOCTYPE html>
   .qd-title{ font-size:19.5px; font-weight:700; line-height:1.35; margin-bottom:8px; font-family:var(--font-display); }
   .qd-meta{ font-size:11.5px; color:var(--text-faint); margin-bottom:20px; }
   .qd-img{ width:100%; max-width:560px; height:280px; border-radius:var(--radius); background:var(--surface-2) center/cover no-repeat; border:1px solid var(--border); margin-bottom:20px; }
-  .qd-textarea{ display:block; width:100%; min-height:340px; background:var(--navy-deep); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:13.5px; line-height:1.75; padding:18px 20px; font-family:inherit; resize:vertical; }
-  .qd-preview-label{ font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-faint); font-weight:600; font-family:var(--font-mono); margin:14px 0 6px; }
-  .qd-preview{ background:var(--navy-deep); border:1px solid var(--border); border-radius:var(--radius-sm); padding:14px 16px; font-size:13.5px; line-height:1.65; color:var(--text); white-space:pre-wrap; word-break:break-word; }
-  .qd-preview b, .qd-preview strong{ font-weight:700; }
-  .qd-preview blockquote{ border-left:3px solid var(--gold); margin:6px 0; padding:2px 0 2px 12px; color:var(--text-dim); }
+  .qd-textarea{ display:block; width:100%; min-height:340px; max-height:600px; overflow-y:auto; background:var(--navy-deep); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:13.5px; line-height:1.75; padding:18px 20px; font-family:inherit; resize:vertical; outline:none; white-space:pre-wrap; }
+  .qd-textarea b, .qd-textarea strong{ font-weight:700; }
+  .qd-textarea blockquote{ border-left:3px solid var(--gold); margin:6px 0; padding:2px 0 2px 12px; color:var(--text-dim); }
   .fmt-toolbar{ display:flex; gap:6px; margin-bottom:8px; }
   .fmt-btn{ min-width:32px; padding:6px 10px; font-size:13px; }
   .fmt-btn.fmt-bold{ font-weight:800; }
@@ -726,6 +724,9 @@ STUDIO_HTML = """<!DOCTYPE html>
   // Telegram HTML parse_mode FAQAT shu teglarni tushunadi (telegram_utils.py
   // _TG_ALLOWED_TAGS bilan bir xil ro'yxat) — boshqasi rad etiladi.
   const TG_ALLOWED_TAGS = new Set(['b', 'strong', 'i', 'em', 'u', 'ins', 's', 'strike', 'del', 'a', 'code', 'pre', 'tg-spoiler', 'span', 'blockquote']);
+  // Kontenteditable qutida qatorlar shu teglar bilan ajratiladi (brauzer
+  // Enter bosilganda avtomatik yaratadi).
+  const TG_BLOCK_TAGS = new Set(['DIV', 'P']);
 
   // MUHIM: server (telegram_utils.sanitize_telegram_html) allaqachon
   // <br> kabi teglarni tozalab, o'qishda ham qayta tozalab (self-heal)
@@ -741,51 +742,101 @@ STUDIO_HTML = """<!DOCTYPE html>
     return text;
   }
 
-  // Review Queue'dagi Bold/Italic/Iqtibos tugmalari — textarea'da
-  // tanlangan matnni Telegram HTML tegi bilan o'raydi. Tanlov bo'lmasa,
-  // kursor ikki teg orasiga qo'yiladi (yozishni davom ettirish uchun).
-  function wrapSelection(textareaId, openTag, closeTag) {
-    const ta = document.getElementById(textareaId);
-    if (!ta) return;
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
-    const value = ta.value;
-    const selected = value.slice(start, end);
-    const before = value.slice(0, start);
-    const after = value.slice(end);
-    ta.value = before + openTag + selected + closeTag + after;
-    ta.focus();
-    if (selected) {
-      ta.selectionStart = start;
-      ta.selectionEnd = start + openTag.length + selected.length + closeTag.length;
-    } else {
-      const cursorPos = start + openTag.length;
-      ta.selectionStart = ta.selectionEnd = cursorPos;
-    }
-    // Tugma bosilgach natija DARHOL ko'rinishi kerak — value'ni dastur
-    // orqali o'zgartirish 'input' hodisasini avtomatik chaqirmaydi,
-    // shuning uchun preview'ni bu yerda qo'lda yangilaymiz.
-    updateQdPreview();
-  }
+  // Xom matnni (\\n va <b>/<i>/<blockquote> kabi Telegram-teglari bilan)
+  // Review Queue'dagi tahrirlanadigan (contenteditable) qutiga
+  // YUKLASH uchun HTML'ga aylantiradi: butun matn avval to'liq escape
+  // qilinadi (xavfsizlik — <script> kabi narsa hech qachon ishlamaydi),
+  // so'ng FAQAT bizning ruxsat etilgan teglarimiz qaytadan haqiqiy
+  // tegga aylantiriladi, va \\n qatorlar <br>ga aylanadi.
+  const RICH_TAG_PATTERN = /&lt;(\/?)(b|strong|i|em|u|ins|s|strike|del|code|pre|tg-spoiler|blockquote)&gt;/g;
 
-  // Faqat KO'RSATISH uchun: matnni to'liq escape qilib, so'ng FAQAT
-  // bizning toolbar tugmalarimiz qo'shadigan oddiy (atributsiz)
-  // teglarni (<b>, <i>, <blockquote> va h.k.) qaytadan haqiqiy tegga
-  // aylantiradi. Boshqa hech qanday teg (atributli, script va h.k.)
-  // qayta tiklanmaydi — xavfsiz, chunki avval HAMMASI escape qilingan.
-  const PREVIEW_TAG_PATTERN = /&lt;(\/?)(b|strong|i|em|u|ins|s|strike|del|code|pre|tg-spoiler|blockquote)&gt;/g;
-
-  function renderTelegramPreview(text) {
-    if (!text) return '<span style="color:var(--text-faint)">(bo\\'sh)</span>';
-    let escaped = escapeHtml(text).replace(PREVIEW_TAG_PATTERN, (match, slash, tag) => `<${slash}${tag}>`);
+  function renderRichHtml(text) {
+    if (!text) return '';
+    let escaped = escapeHtml(text).replace(RICH_TAG_PATTERN, (match, slash, tag) => `<${slash}${tag}>`);
     return escaped.replace(/\\n/g, '<br>');
   }
 
-  function updateQdPreview() {
-    const ta = document.getElementById('qd-content');
-    const preview = document.getElementById('qd-preview');
-    if (!ta || !preview) return;
-    preview.innerHTML = renderTelegramPreview(ta.value);
+  // Kontenteditable qutidan HAQIQIY DOM daraxtini o'qib, uni qaytadan
+  // xom matn+teg formatiga (asset.content bilan bir xil format —
+  // \\n qatorlar, <b>/<i>/<blockquote> teglar) aylantiradi. Bu
+  // renderRichHtml()ning teskarisi. Chrome'da Enter bosilganda har
+  // qator alohida <div>ga o'raladi — shuning uchun DIV/P chegaralarini
+  // ham \\n sifatida hisoblaymiz. Bo'sh qator uchun brauzer <div><br></div>
+  // naqshini ishlatadi (faqat ko'rinish uchun) — bu holatda ICHKARIDAGI
+  // <br> qo'shimcha \\n hosil qilmasligi kerak (aks holda ikki barobar
+  // qator bo'sh joy paydo bo'ladi), shuning uchun alohida tekshiriladi.
+  function serializeEditableNode(node, ctx) {
+    if (node.nodeType === 3) { ctx.result += node.nodeValue; return; }
+    if (node.nodeType !== 1) return;
+    const tag = node.tagName;
+    if (tag === 'BR') { ctx.result += '\\n'; return; }
+    if (TG_BLOCK_TAGS.has(tag)) {
+      if (ctx.result !== '') ctx.result += '\\n';
+      const kids = Array.from(node.childNodes);
+      const isEmptyPlaceholder = kids.length === 1 && kids[0].nodeType === 1 && kids[0].tagName === 'BR';
+      if (!isEmptyPlaceholder) kids.forEach(k => serializeEditableNode(k, ctx));
+      return;
+    }
+    const lower = tag.toLowerCase();
+    if (TG_ALLOWED_TAGS.has(lower)) {
+      ctx.result += `<${lower}>`;
+      Array.from(node.childNodes).forEach(k => serializeEditableNode(k, ctx));
+      ctx.result += `</${lower}>`;
+      return;
+    }
+    Array.from(node.childNodes).forEach(k => serializeEditableNode(k, ctx));
+  }
+
+  function getEditableContent(id) {
+    const ed = document.getElementById(id);
+    if (!ed) return '';
+    const ctx = { result: '' };
+    Array.from(ed.childNodes).forEach(k => serializeEditableNode(k, ctx));
+    return ctx.result.replace(/\\u200b/g, '');
+  }
+
+  function setEditableContent(id, text) {
+    const ed = document.getElementById(id);
+    if (!ed) return;
+    ed.innerHTML = renderRichHtml(text) || '';
+  }
+
+  // Review Queue'dagi Bold/Italic/Iqtibos tugmalari — kontenteditable
+  // qutida tanlangan matnni HAQIQIY DOM tegi (<b>/<i>/<blockquote>)
+  // bilan o'raydi, natija DARHOL (xom teg emas, chin qalin/qiya/iqtibos
+  // ko'rinishida) ko'rinadi. Tanlov bo'lmasa, bo'sh teg qo'yilib kursor
+  // ichiga qo'yiladi (zero-width bo'sh joy bilan — aks holda brauzer
+  // bo'sh tegni umuman ko'rsatmaydi/kursor turolmaydi).
+  function wrapSelectionRich(tagName) {
+    const ed = document.getElementById('qd-content');
+    if (!ed) return;
+    ed.focus();
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (!ed.contains(range.commonAncestorContainer)) return;
+    const el = document.createElement(tagName);
+    if (range.collapsed) {
+      el.appendChild(document.createTextNode('\\u200b'));
+      range.insertNode(el);
+      const newRange = document.createRange();
+      newRange.setStart(el.firstChild, 1);
+      newRange.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+    } else {
+      try {
+        range.surroundContents(el);
+      } catch (e) {
+        const contents = range.extractContents();
+        el.appendChild(contents);
+        range.insertNode(el);
+      }
+      sel.removeAllRanges();
+      const newRange = document.createRange();
+      newRange.selectNodeContents(el);
+      sel.addRange(newRange);
+    }
   }
 
   function fmtTime(iso) {
@@ -1163,20 +1214,21 @@ STUDIO_HTML = """<!DOCTYPE html>
       <div class="qd-meta">${escapeHtml(assetTypeLabel(a.type))} · ${fmtTime(a.created_at)}${a.source_url ? ' · <a class="rp-link" href="' + escapeAttr(a.source_url) + '" target="_blank">manba</a>' : ''}</div>
       <div id="queueimg-picker-slot"></div>
       <div class="fmt-toolbar">
-        <button type="button" class="btn btn-ghost fmt-btn fmt-bold" onclick="wrapSelection('qd-content', '<b>', '</b>')" title="Qalin (Bold)">B</button>
-        <button type="button" class="btn btn-ghost fmt-btn fmt-italic" onclick="wrapSelection('qd-content', '<i>', '</i>')" title="Qiya (Italic)">I</button>
-        <button type="button" class="btn btn-ghost fmt-btn" onclick="wrapSelection('qd-content', '<blockquote>', '</blockquote>')" title="Iqtibos (Quote)">”</button>
+        <button type="button" class="btn btn-ghost fmt-btn fmt-bold" onmousedown="event.preventDefault()" onclick="wrapSelectionRich('b')" title="Qalin (Bold)">B</button>
+        <button type="button" class="btn btn-ghost fmt-btn fmt-italic" onmousedown="event.preventDefault()" onclick="wrapSelectionRich('i')" title="Qiya (Italic)">I</button>
+        <button type="button" class="btn btn-ghost fmt-btn" onmousedown="event.preventDefault()" onclick="wrapSelectionRich('blockquote')" title="Iqtibos (Quote)">”</button>
       </div>
-      <textarea id="qd-content" class="qd-textarea" oninput="updateQdPreview()">${escapeHtml(cleanBrTags(a.content || ''))}</textarea>
-      <div class="qd-preview-label">Ko'rinish (Telegram'da qanday chiqadi)</div>
-      <div class="qd-preview" id="qd-preview"></div>
+      <div id="qd-content" class="qd-textarea" contenteditable="true"></div>
       <div class="qd-actions">
         <button class="btn btn-green" onclick="approveAsset(${a.id})">Tasdiqlash</button>
         <button class="btn btn-ghost" onclick="saveAssetManual(${a.id})">Saqlash</button>
         <button class="btn btn-danger" onclick="rejectAsset(${a.id})">Rad</button>
       </div>
     `;
-    updateQdPreview();
+    // Matn (\\n va Telegram teglari bilan) DOM'ga qo'yilgach, uni haqiqiy
+    // qalin/qiya/iqtibos ko'rinishga aylantiramiz — endi tugma bosilganda
+    // xom teg emas, chin natija ko'rinadi.
+    setEditableContent('qd-content', cleanBrTags(a.content || ''));
     document.getElementById('queueimg-picker-slot').innerHTML = imagePickerHTML('queueimg', a.image_url);
     initImagePickerState('queueimg', a.image_url, (url) => {
       apiPost('/api/studio/assets/set_image', { id: a.id, image_url: url }).then(async res => {
@@ -1230,7 +1282,7 @@ STUDIO_HTML = """<!DOCTYPE html>
 
   async function saveAsset(id) {
     try {
-      const res = await apiPost('/api/studio/assets/update', { id, content: document.getElementById('qd-content').value });
+      const res = await apiPost('/api/studio/assets/update', { id, content: getEditableContent('qd-content') });
       const data = await res.json();
       if (!res.ok) { toast('Saqlashda xato: ' + (data.error || res.status)); return false; }
       return true;
@@ -1246,7 +1298,7 @@ STUDIO_HTML = """<!DOCTYPE html>
     if (saved) {
       toast('Saqlandi');
       const a = assetCache[id];
-      if (a) a.content = document.getElementById('qd-content').value;
+      if (a) a.content = getEditableContent('qd-content');
     }
   }
 
