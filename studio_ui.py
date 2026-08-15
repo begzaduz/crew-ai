@@ -160,6 +160,10 @@ STUDIO_HTML = """<!DOCTYPE html>
   .qd-meta{ font-size:11.5px; color:var(--text-faint); margin-bottom:20px; }
   .qd-img{ width:100%; max-width:560px; height:280px; border-radius:var(--radius); background:var(--surface-2) center/cover no-repeat; border:1px solid var(--border); margin-bottom:20px; }
   .qd-textarea{ display:block; width:100%; min-height:340px; background:var(--navy-deep); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:13.5px; line-height:1.75; padding:18px 20px; font-family:inherit; resize:vertical; }
+  .qd-preview-label{ font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-faint); font-weight:600; font-family:var(--font-mono); margin:14px 0 6px; }
+  .qd-preview{ background:var(--navy-deep); border:1px solid var(--border); border-radius:var(--radius-sm); padding:14px 16px; font-size:13.5px; line-height:1.65; color:var(--text); white-space:pre-wrap; word-break:break-word; }
+  .qd-preview b, .qd-preview strong{ font-weight:700; }
+  .qd-preview blockquote{ border-left:3px solid var(--gold); margin:6px 0; padding:2px 0 2px 12px; color:var(--text-dim); }
   .fmt-toolbar{ display:flex; gap:6px; margin-bottom:8px; }
   .fmt-btn{ min-width:32px; padding:6px 10px; font-size:13px; }
   .fmt-btn.fmt-bold{ font-weight:800; }
@@ -699,8 +703,17 @@ STUDIO_HTML = """<!DOCTYPE html>
   }
 
   function escapeHtml(str) {
+    // MUHIM: innerText EMAS, textContent ishlatiladi. innerText
+    // layout/render-asoslangan xususiyat — real brauzerda (Chrome)
+    // matn ichidagi \\n belgilarini qaytadan <br> tegiga aylantirib
+    // yuborishi mumkin (innerHTML o'qilganda), hatto element DOM'ga
+    // ulanmagan bo'lsa ham. Bu aynan "post matnida xom <br> ko'rinadi"
+    // muammosining haqiqiy sababi edi — server/cleanBrTags() to'g'ri
+    // tozalagan bo'lsa ham, keyin shu funksiya ularni qaytadan hosil
+    // qilib qo'yardi. textContent — sof matn darajasida ishlaydi,
+    // hech qanday layout/render hisoblanmaydi, shuning uchun xavfsiz.
     const div = document.createElement('div');
-    div.innerText = str || '';
+    div.textContent = str || '';
     return div.innerHTML;
   }
 
@@ -749,6 +762,30 @@ STUDIO_HTML = """<!DOCTYPE html>
       const cursorPos = start + openTag.length;
       ta.selectionStart = ta.selectionEnd = cursorPos;
     }
+    // Tugma bosilgach natija DARHOL ko'rinishi kerak — value'ni dastur
+    // orqali o'zgartirish 'input' hodisasini avtomatik chaqirmaydi,
+    // shuning uchun preview'ni bu yerda qo'lda yangilaymiz.
+    updateQdPreview();
+  }
+
+  // Faqat KO'RSATISH uchun: matnni to'liq escape qilib, so'ng FAQAT
+  // bizning toolbar tugmalarimiz qo'shadigan oddiy (atributsiz)
+  // teglarni (<b>, <i>, <blockquote> va h.k.) qaytadan haqiqiy tegga
+  // aylantiradi. Boshqa hech qanday teg (atributli, script va h.k.)
+  // qayta tiklanmaydi — xavfsiz, chunki avval HAMMASI escape qilingan.
+  const PREVIEW_TAG_PATTERN = /&lt;(\/?)(b|strong|i|em|u|ins|s|strike|del|code|pre|tg-spoiler|blockquote)&gt;/g;
+
+  function renderTelegramPreview(text) {
+    if (!text) return '<span style="color:var(--text-faint)">(bo\\'sh)</span>';
+    let escaped = escapeHtml(text).replace(PREVIEW_TAG_PATTERN, (match, slash, tag) => `<${slash}${tag}>`);
+    return escaped.replace(/\\n/g, '<br>');
+  }
+
+  function updateQdPreview() {
+    const ta = document.getElementById('qd-content');
+    const preview = document.getElementById('qd-preview');
+    if (!ta || !preview) return;
+    preview.innerHTML = renderTelegramPreview(ta.value);
   }
 
   function fmtTime(iso) {
@@ -1130,13 +1167,16 @@ STUDIO_HTML = """<!DOCTYPE html>
         <button type="button" class="btn btn-ghost fmt-btn fmt-italic" onclick="wrapSelection('qd-content', '<i>', '</i>')" title="Qiya (Italic)">I</button>
         <button type="button" class="btn btn-ghost fmt-btn" onclick="wrapSelection('qd-content', '<blockquote>', '</blockquote>')" title="Iqtibos (Quote)">”</button>
       </div>
-      <textarea id="qd-content" class="qd-textarea">${escapeHtml(cleanBrTags(a.content || ''))}</textarea>
+      <textarea id="qd-content" class="qd-textarea" oninput="updateQdPreview()">${escapeHtml(cleanBrTags(a.content || ''))}</textarea>
+      <div class="qd-preview-label">Ko'rinish (Telegram'da qanday chiqadi)</div>
+      <div class="qd-preview" id="qd-preview"></div>
       <div class="qd-actions">
         <button class="btn btn-green" onclick="approveAsset(${a.id})">Tasdiqlash</button>
         <button class="btn btn-ghost" onclick="saveAssetManual(${a.id})">Saqlash</button>
         <button class="btn btn-danger" onclick="rejectAsset(${a.id})">Rad</button>
       </div>
     `;
+    updateQdPreview();
     document.getElementById('queueimg-picker-slot').innerHTML = imagePickerHTML('queueimg', a.image_url);
     initImagePickerState('queueimg', a.image_url, (url) => {
       apiPost('/api/studio/assets/set_image', { id: a.id, image_url: url }).then(async res => {
