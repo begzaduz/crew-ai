@@ -459,6 +459,16 @@ def approve_asset(data: dict) -> tuple[int, object]:
     if asset.get('status') in ('published', 'scheduled'):
         return 400, {'error': 'bu post allaqachon tasdiqlangan'}
 
+    # MUHIM: Telegram HTML teglari (masalan <blockquote>) muvozanatsiz
+    # bo'lsa (ochilgan, lekin yopilmagan yoki aksincha), Telegram butun
+    # postni rad etadi. Bu tekshiruv shu muammoni Tasdiqlashning O'ZIDA,
+    # aniq xabar bilan ushlab qoladi — aks holda muammo faqat
+    # Telegram'ga yuborilayotganda (yoki, yanada yomoni, Scheduled
+    # navbatida boshqa postlarni ham to'xtatib qo'yib) topiladi.
+    balance_error = telegram_utils.check_tag_balance(asset.get('content') or '')
+    if balance_error:
+        return 400, {'error': f"Post formatida xato bor — Telegram qabul qilmaydi ({balance_error}). Tahrirlab qayta urinib ko'ring."}
+
     reviewer = data.get('reviewer', 'dashboard')
     notes = data.get('notes', '')
 
@@ -510,6 +520,21 @@ def publish_due_scheduled(project_id: int) -> None:
     status, payload = _publish_asset_now(asset, reviewer='scheduler', notes="publish_interval_minutes bo'yicha avtomatik chiqarildi")
     if status != 200:
         log.error(f'[Scheduler] (loyiha={project_id}) Asset #{asset["id"]} chiqarishda xato: {payload}')
+        # MUHIM: agar chiqarish muvaffaqiyatsiz bo'lsa, postni 'scheduled'
+        # holatida ABADIY qoldirib bo'lmaydi — get_next_scheduled_asset()
+        # har doim navbatning ENG ESKISINI tanlaydi, shuning uchun bitta
+        # doim muvaffaqiyatsiz bo'ladigan post (masalan muvozanatsiz HTML
+        # tegi tufayli) undan keyingi BARCHA postlarni ham abadiy
+        # to'xtatib qo'yardi (har safar shu bitta postga qaytib kelib,
+        # yana muvaffaqiyatsiz bo'lib). Buning o'rniga postni qaytadan
+        # Review Queue'ga (status='draft') qaytaramiz — admin xatoni
+        # ko'rib tuzatib qayta yuborishi yoki rad etishi mumkin, va
+        # navbat undan keyingi postlar uchun DARHOL ochiladi.
+        database.unschedule_asset(asset['id'])
+        database.add_review(
+            asset['id'], reviewer='scheduler', decision='failed',
+            notes=f"Avtomatik chiqarishda xato, Review Queue'ga qaytarildi: {payload.get('error', '')}",
+        )
 
 
 def reject_asset(data: dict) -> tuple[int, object]:

@@ -44,6 +44,39 @@ def sanitize_telegram_html(text: str) -> str:
     return text
 
 
+def check_tag_balance(text: str) -> str | None:
+    """Telegram HTML teglari (masalan <b>...</b>, <blockquote>...
+    </blockquote>) to'g'ri ochilib-yopilganmi va joyi to'g'rimi
+    tekshiradi. sanitize_telegram_html() FAQAT ruxsat etilmagan
+    teglarni olib tashlaydi — ikkita ruxsat etilgan tegning MUVOZANATI
+    (masalan bitta '<blockquote>' ochilib, mos '</blockquote>' bo'lmasa)
+    ni tekshirmaydi. Bunday muvozanatsiz teg Telegram tomonidan butun
+    postni 'can't parse entities' xatosi bilan rad etilishiga sabab
+    bo'ladi — agar bu Scheduled navbatida sodir bo'lsa, buzuq post
+    undan keyingi BARCHA postlarni ham abadiy to'xtatib qo'yadi (chunki
+    scheduler har doim navbatning eng eskisini birinchi tanlaydi).
+    Shuning uchun bu tekshiruv Tasdiqlashdan OLDIN (approve_asset())
+    chaqiriladi — muammo Telegram'ga yuborilishidan oldin, Dashboard'da
+    aniq xabar bilan ushlanadi. Muammo topilsa xato matnini, aks holda
+    None qaytaradi."""
+    if not text:
+        return None
+    stack: list[str] = []
+    for m in re.finditer(r'<(/?)([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*>', text):
+        closing, tag = m.group(1), m.group(2).lower()
+        if tag not in _TG_ALLOWED_TAGS:
+            continue
+        if not closing:
+            stack.append(tag)
+        else:
+            if not stack or stack[-1] != tag:
+                return f"'<{tag}>' tegi noto'g'ri joyda yopilgan yoki ochilmagan"
+            stack.pop()
+    if stack:
+        return f"'<{stack[-1]}>' tegi ochilgan, lekin yopilmagan"
+    return None
+
+
 def tg_send(chat_id: int | str, text: str, reply_markup: dict | None = None) -> dict:
     payload: dict = {'chat_id': chat_id, 'text': text}
     if reply_markup:

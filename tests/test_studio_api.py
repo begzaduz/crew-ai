@@ -117,6 +117,26 @@ class TestApproveAssetChannelRouting:
     QAT'I NAZAR, postning O'Z EGASI bo'lgan loyihaning Telegram
     kanaliga yuborilishi kerak (bitta bot — bir nechta kanal)."""
 
+    def test_approve_rejects_unbalanced_tag_before_sending(self, clean_db):
+        # Production incident: muvozanatsiz <blockquote> tegi Telegram
+        # tomonidan rad etilib, Scheduled navbatini abadiy to'xtatib
+        # qo'ygan edi. Endi bu Tasdiqlashning O'ZIDA ushlanadi — hech
+        # qachon Telegram'ga (yoki Scheduled navbatiga) yetib bormaydi.
+        project = database.get_or_create_project('unbalanced-tag', 'Unbalanced Tag')
+        asset = database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title='Test', content='Matn <blockquote>ochilgan iqtibos, yopilmagan davomi shu yerda.',
+            score=0,
+        )
+        with patch.object(studio_api.telegram_utils, 'tg_channel') as mock_tg:
+            status, payload = studio_api.approve_asset({'id': asset['id']})
+        mock_tg.assert_not_called()
+        assert status == 400
+        assert 'blockquote' in payload['error']
+        # Post hali ham 'draft' holatida qolishi kerak — na chiqarilgan,
+        # na navbatga qo'yilgan.
+        assert database.get_asset(asset['id'])['status'] == 'draft'
+
     def test_approve_uses_asset_owner_project_channel(self, clean_db):
         project = database.get_or_create_project('toy-co', 'Toy Company')
         database.set_workflow_config(project['id'], {'telegram_channel_id': '@ToyCompanyChannel'})
@@ -332,6 +352,45 @@ class TestPublishScheduling:
         with patch.object(studio_api.telegram_utils, 'tg_channel') as mock_tg:
             studio_api.publish_due_scheduled(project['id'])
         mock_tg.assert_not_called()
+
+    def test_publish_due_scheduled_unschedules_asset_on_failure(self, clean_db):
+        # PRODUCTION INCIDENT REGRESSIYASI: bitta doim muvaffaqiyatsiz
+        # bo'ladigan post (masalan muvozanatsiz HTML tegi yoki noto'g'ri
+        # bot tokeni tufayli) undan keyingi BARCHA postlarni ham abadiy
+        # to'xtatib qo'ymasligi kerak — get_next_scheduled_asset() har
+        # doim navbatning eng eskisini tanlaydi, shuning uchun muvaffaqiyat-
+        # siz post 'scheduled' holatida qolib ketsa, hech qachon undan
+        # keyingi postlarga navbat yetib bormaydi.
+        project = database.get_or_create_project('sched-jam', 'Sched Jam')
+        asset1 = database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title='Birinchi (buzuq)', content='Content long enough to pass validation checks here.',
+            score=0,
+        )
+        asset2 = database.create_asset(
+            project_id=project['id'], source_url=None, asset_type='manual',
+            title='Ikkinchi (toza)', content='Content long enough to pass validation checks here too.',
+            score=0,
+        )
+        database.schedule_asset(asset1['id'])
+        import time as _time
+        _time.sleep(0.05)
+        database.schedule_asset(asset2['id'])
+        database.update_workflow_config(project['id'], {'publish_interval_minutes': 60})
+
+        with patch.object(studio_api.telegram_utils, 'tg_channel', return_value={'ok': False, 'description': "can't parse entities"}):
+            studio_api.publish_due_scheduled(project['id'])
+
+        updated1 = database.get_asset(asset1['id'])
+        updated2 = database.get_asset(asset2['id'])
+        assert updated1['status'] == 'draft'  # navbatdan chiqarilib, qaytarilgan
+        assert updated2['status'] == 'scheduled'  # tegilmagan, navbatda qolgan
+
+        # Keyingi tsiklda navbat endi ochilgan — ikkinchi (toza) post
+        # muammosiz chiqishi kerak.
+        with patch.object(studio_api.telegram_utils, 'tg_channel', return_value={'ok': True}):
+            studio_api.publish_due_scheduled(project['id'])
+        assert database.get_asset(asset2['id'])['status'] == 'published'
 
     def test_publish_interval_rejects_negative(self, clean_db):
         project = database.get_or_create_project('sched-neg', 'Sched Neg')

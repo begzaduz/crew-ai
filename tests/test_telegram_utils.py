@@ -3,7 +3,7 @@ regressiyasi: Gemini ba'zan '<br>' o'rniga orasida bo'shliq bilan
 '< br >' kabi variant chiqarib qo'yishi kuzatildi (Dashboard'da xom
 teg ko'rinib qolgan edi), shuning uchun bo'shliqli variantlar ham
 qamrab olinishi SHART."""
-from telegram_utils import sanitize_telegram_html, _clean_post
+from telegram_utils import sanitize_telegram_html, _clean_post, check_tag_balance
 
 
 class TestSanitizeBrTag:
@@ -122,3 +122,50 @@ class TestCleanPostBoldTitle:
     def test_bold_title_preserves_leading_emoji_outside_bold(self):
         result = _clean_post('🚨 Muhim xabar\n\nMatn.', bold_title=True)
         assert result.startswith('🚨 <b>Muhim xabar</b>')
+
+
+class TestCheckTagBalance:
+    """MUHIM: bu test-klass haqiqiy production incidentga (Scheduled
+    navbatida muvozanatsiz <blockquote> tegi butun navbatni abadiy
+    to'xtatib qo'ygan holatga) asoslangan regressiya testi."""
+
+    def test_balanced_tags_pass(self):
+        assert check_tag_balance('Oddiy <b>qalin</b> va <i>qiya</i> matn') is None
+
+    def test_balanced_blockquote_passes(self):
+        assert check_tag_balance('Matn <blockquote>iqtibos</blockquote> davomi') is None
+
+    def test_empty_string_passes(self):
+        assert check_tag_balance('') is None
+
+    def test_plain_text_without_tags_passes(self):
+        assert check_tag_balance('Hech qanday teg yoq oddiy matn') is None
+
+    def test_unclosed_blockquote_detected(self):
+        # Aynan production'da uchragan holat: ochilgan, lekin yopilmagan.
+        err = check_tag_balance('Matn <blockquote>iqtibos davomi')
+        assert err is not None
+        assert 'blockquote' in err
+
+    def test_closing_tag_without_opening_detected(self):
+        err = check_tag_balance('Matn </blockquote> davomi')
+        assert err is not None
+        assert 'blockquote' in err
+
+    def test_mismatched_nesting_detected(self):
+        # <b><i>...</b></i> — ichki-tashqi tartib buzilgan
+        err = check_tag_balance('<b><i>matn</b></i>')
+        assert err is not None
+
+    def test_nested_balanced_nicely(self):
+        assert check_tag_balance('<blockquote>Iqtibos <b>qalin qism</b> davomi</blockquote>') is None
+
+    def test_multiple_independent_balanced_tags(self):
+        assert check_tag_balance('<b>A</b> matn <i>B</i> yana <blockquote>C</blockquote>') is None
+
+    def test_disallowed_tag_ignored_by_balance_check(self):
+        # sanitize_telegram_html() bu tegni allaqachon olib tashlaydi —
+        # balance tekshiruvi ruxsat etilmagan teglarga umuman
+        # e'tibor bermasligi kerak (ular sanitize bosqichida allaqachon
+        # hal qilinadi).
+        assert check_tag_balance('<div>matn</div>') is None
