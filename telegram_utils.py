@@ -21,7 +21,7 @@ log = logging.getLogger(__name__)
 # etadi. Shuning uchun yuborishdan oldin har doim tozalanadi.
 _TG_ALLOWED_TAGS = {
     'b', 'strong', 'i', 'em', 'u', 'ins', 's', 'strike', 'del',
-    'a', 'code', 'pre', 'tg-spoiler', 'span',
+    'a', 'code', 'pre', 'tg-spoiler', 'span', 'blockquote',
 }
 
 

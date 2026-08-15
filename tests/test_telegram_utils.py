@@ -46,6 +46,11 @@ class TestSanitizeDisallowedTags:
     def test_keeps_allowed_bold_tag(self):
         assert sanitize_telegram_html('<b>matn</b>') == '<b>matn</b>'
 
+    def test_keeps_allowed_blockquote_tag(self):
+        # MUHIM: Review Queue'dagi 'Iqtibos' (Quote) formatlash tugmasi
+        # shu tegdan foydalanadi — sanitize uni olib tashlamasligi kerak.
+        assert sanitize_telegram_html('<blockquote>iqtibos matni</blockquote>') == '<blockquote>iqtibos matni</blockquote>'
+
     def test_empty_string_returns_as_is(self):
         assert sanitize_telegram_html('') == ''
 

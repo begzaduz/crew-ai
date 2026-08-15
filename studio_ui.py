@@ -160,6 +160,10 @@ STUDIO_HTML = """<!DOCTYPE html>
   .qd-meta{ font-size:11.5px; color:var(--text-faint); margin-bottom:20px; }
   .qd-img{ width:100%; max-width:560px; height:280px; border-radius:var(--radius); background:var(--surface-2) center/cover no-repeat; border:1px solid var(--border); margin-bottom:20px; }
   .qd-textarea{ display:block; width:100%; min-height:340px; background:var(--navy-deep); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:13.5px; line-height:1.75; padding:18px 20px; font-family:inherit; resize:vertical; }
+  .fmt-toolbar{ display:flex; gap:6px; margin-bottom:8px; }
+  .fmt-btn{ min-width:32px; padding:6px 10px; font-size:13px; }
+  .fmt-btn.fmt-bold{ font-weight:800; }
+  .fmt-btn.fmt-italic{ font-style:italic; }
   .qd-textarea:focus{ outline:none; border-color:var(--gold); }
   .qd-textarea[readonly]{ color:var(--text-dim); }
   .qd-actions{ display:flex; gap:10px; margin-top:20px; }
@@ -706,6 +710,47 @@ STUDIO_HTML = """<!DOCTYPE html>
     }[c]));
   }
 
+  // Telegram HTML parse_mode FAQAT shu teglarni tushunadi (telegram_utils.py
+  // _TG_ALLOWED_TAGS bilan bir xil ro'yxat) — boshqasi rad etiladi.
+  const TG_ALLOWED_TAGS = new Set(['b', 'strong', 'i', 'em', 'u', 'ins', 's', 'strike', 'del', 'a', 'code', 'pre', 'tg-spoiler', 'span', 'blockquote']);
+
+  // MUHIM: server (telegram_utils.sanitize_telegram_html) allaqachon
+  // <br> kabi teglarni tozalab, o'qishda ham qayta tozalab (self-heal)
+  // qaytaradi. Bu FRONTEND'dagi qo'shimcha himoya qatlami — agar
+  // biror sababdan (masalan eski keshlangan javob) xom teg Dashboard'ga
+  // yetib kelsa ham, ko'rsatishdan oldin shu yerda ham tozalanadi.
+  function cleanBrTags(text) {
+    if (!text) return text;
+    text = text.replace(/<\s*br\s*\/?\s*>/gi, '\\n');
+    text = text.replace(/<\s*\/?\s*([a-zA-Z][a-zA-Z0-9-]*)\\b[^>]*>/g, (match, tag) => {
+      return TG_ALLOWED_TAGS.has(tag.toLowerCase()) ? match : '';
+    });
+    return text;
+  }
+
+  // Review Queue'dagi Bold/Italic/Iqtibos tugmalari — textarea'da
+  // tanlangan matnni Telegram HTML tegi bilan o'raydi. Tanlov bo'lmasa,
+  // kursor ikki teg orasiga qo'yiladi (yozishni davom ettirish uchun).
+  function wrapSelection(textareaId, openTag, closeTag) {
+    const ta = document.getElementById(textareaId);
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const value = ta.value;
+    const selected = value.slice(start, end);
+    const before = value.slice(0, start);
+    const after = value.slice(end);
+    ta.value = before + openTag + selected + closeTag + after;
+    ta.focus();
+    if (selected) {
+      ta.selectionStart = start;
+      ta.selectionEnd = start + openTag.length + selected.length + closeTag.length;
+    } else {
+      const cursorPos = start + openTag.length;
+      ta.selectionStart = ta.selectionEnd = cursorPos;
+    }
+  }
+
   function fmtTime(iso) {
     if (!iso) return '';
     try {
@@ -1071,11 +1116,21 @@ STUDIO_HTML = """<!DOCTYPE html>
     if (!a) return;
     selectedQueueId = id;
     document.querySelectorAll('.mini-card').forEach(c => c.classList.toggle('selected', Number(c.dataset.id) === id));
+    // MUHIM: server allaqachon <br> kabi teglarni tozalab qaytaradi
+    // (self-heal), lekin agar biror sababdan (eski keshlangan javob,
+    // hali tozalanmagan yozuv) xom teg qolib ketgan bo'lsa, bu yerda
+    // ham himoya sifatida tozalanadi — Dashboard'da hech qachon xom
+    // '<br>' ko'rinmasin uchun.
     document.getElementById('queue-detail').innerHTML = `
       <div class="qd-title">${escapeHtml(a.title || '')}</div>
       <div class="qd-meta">${escapeHtml(assetTypeLabel(a.type))} · ${fmtTime(a.created_at)}${a.source_url ? ' · <a class="rp-link" href="' + escapeAttr(a.source_url) + '" target="_blank">manba</a>' : ''}</div>
       <div id="queueimg-picker-slot"></div>
-      <textarea id="qd-content" class="qd-textarea">${escapeHtml(a.content || '')}</textarea>
+      <div class="fmt-toolbar">
+        <button type="button" class="btn btn-ghost fmt-btn fmt-bold" onclick="wrapSelection('qd-content', '<b>', '</b>')" title="Qalin (Bold)">B</button>
+        <button type="button" class="btn btn-ghost fmt-btn fmt-italic" onclick="wrapSelection('qd-content', '<i>', '</i>')" title="Qiya (Italic)">I</button>
+        <button type="button" class="btn btn-ghost fmt-btn" onclick="wrapSelection('qd-content', '<blockquote>', '</blockquote>')" title="Iqtibos (Quote)">”</button>
+      </div>
+      <textarea id="qd-content" class="qd-textarea">${escapeHtml(cleanBrTags(a.content || ''))}</textarea>
       <div class="qd-actions">
         <button class="btn btn-green" onclick="approveAsset(${a.id})">Tasdiqlash</button>
         <button class="btn btn-ghost" onclick="saveAssetManual(${a.id})">Saqlash</button>
@@ -1119,7 +1174,7 @@ STUDIO_HTML = """<!DOCTYPE html>
 
       <div class="rp-section">
         <div class="rp-label">Post matni</div>
-        <textarea style="min-height:180px" readonly>${escapeHtml(a.content || '')}</textarea>
+        <textarea style="min-height:180px" readonly>${escapeHtml(cleanBrTags(a.content || ''))}</textarea>
       </div>
     `;
     rp.classList.add('open');
